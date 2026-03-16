@@ -1,4 +1,4 @@
-"""Plasticity rules: STDP, homeostatic scaling, short-term plasticity."""
+"""Plasticity rules: STDP, homeostatic scaling, short-term plasticity, structural."""
 
 from bl1.plasticity.stdp import STDPState, STDPParams, init_stdp_state, stdp_update
 
@@ -18,6 +18,11 @@ from bl1.plasticity.stp import (
     stp_step,
 )
 
+from bl1.plasticity.structural import (
+    StructuralPlasticityParams,
+    structural_update,
+)
+
 __all__ = [
     "STDPState",
     "STDPParams",
@@ -33,4 +38,6 @@ __all__ = [
     "create_stp_params",
     "init_stp_state",
     "stp_step",
+    "StructuralPlasticityParams",
+    "structural_update",
 ]
