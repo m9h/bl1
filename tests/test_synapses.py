@@ -90,7 +90,11 @@ def test_ampa_spike_response():
 def test_synaptic_current_excitatory():
     """AMPA current at rest should be positive (depolarising)."""
     v = jnp.array([-65.0])
-    ss = SynapseState(g_ampa=jnp.array([1.0]), g_gaba_a=jnp.array([0.0]))
+    z = jnp.array([0.0])
+    ss = SynapseState(
+        g_ampa=jnp.array([1.0]), g_gaba_a=z,
+        g_nmda_rise=z, g_nmda_decay=z, g_gaba_b_rise=z, g_gaba_b_decay=z,
+    )
 
     I_syn = compute_synaptic_current(ss, v)
 
@@ -103,7 +107,11 @@ def test_synaptic_current_excitatory():
 def test_synaptic_current_inhibitory():
     """GABA_A current at rest should be negative (hyperpolarising)."""
     v = jnp.array([-65.0])
-    ss = SynapseState(g_ampa=jnp.array([0.0]), g_gaba_a=jnp.array([1.0]))
+    z = jnp.array([0.0])
+    ss = SynapseState(
+        g_ampa=z, g_gaba_a=jnp.array([1.0]),
+        g_nmda_rise=z, g_nmda_decay=z, g_gaba_b_rise=z, g_gaba_b_decay=z,
+    )
 
     I_syn = compute_synaptic_current(ss, v)
 
@@ -115,14 +123,22 @@ def test_synaptic_current_inhibitory():
 
 def test_synaptic_current_at_reversal():
     """At the reversal potential, driving force (and therefore current) should be ~0."""
+    z = jnp.array([0.0])
+
     # AMPA at reversal (v = E_AMPA = 0)
     v_ampa = jnp.array([E_AMPA])
-    ss_ampa = SynapseState(g_ampa=jnp.array([1.0]), g_gaba_a=jnp.array([0.0]))
+    ss_ampa = SynapseState(
+        g_ampa=jnp.array([1.0]), g_gaba_a=z,
+        g_nmda_rise=z, g_nmda_decay=z, g_gaba_b_rise=z, g_gaba_b_decay=z,
+    )
     I_ampa = compute_synaptic_current(ss_ampa, v_ampa)
     npt.assert_allclose(float(I_ampa[0]), 0.0, atol=1e-7)
 
     # GABA_A at reversal (v = E_GABA_A = -75)
     v_gaba = jnp.array([E_GABA_A])
-    ss_gaba = SynapseState(g_ampa=jnp.array([0.0]), g_gaba_a=jnp.array([1.0]))
+    ss_gaba = SynapseState(
+        g_ampa=z, g_gaba_a=jnp.array([1.0]),
+        g_nmda_rise=z, g_nmda_decay=z, g_gaba_b_rise=z, g_gaba_b_decay=z,
+    )
     I_gaba = compute_synaptic_current(ss_gaba, v_gaba)
     npt.assert_allclose(float(I_gaba[0]), 0.0, atol=1e-7)

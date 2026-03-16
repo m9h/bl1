@@ -35,6 +35,8 @@ from bl1.core.synapses import (
     compute_synaptic_current,
     create_synapse_state,
     gaba_a_step,
+    gaba_b_step,
+    nmda_step,
 )
 from bl1.games.pong import EVENT_HIT, EVENT_MISS
 from bl1.loop.decoding import decode_motor
@@ -97,9 +99,29 @@ def _make_scan_step(
 
         # 4. Synapse conductance update
         spikes_f = neuron_state.spikes.astype(jnp.float32)
+
+        # Phase 1: single-exponential receptors
         new_g_ampa = ampa_step(syn_state.g_ampa, spikes_f, W_exc, dt)
         new_g_gaba_a = gaba_a_step(syn_state.g_gaba_a, spikes_f, W_inh, dt)
-        syn_state = SynapseState(g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a)
+
+        # Phase 2: dual-exponential receptors
+        new_nmda_rise, new_nmda_decay, _ = nmda_step(
+            syn_state.g_nmda_rise, syn_state.g_nmda_decay,
+            spikes_f, W_exc, dt,
+        )
+        new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
+            syn_state.g_gaba_b_rise, syn_state.g_gaba_b_decay,
+            spikes_f, W_inh, dt,
+        )
+
+        syn_state = SynapseState(
+            g_ampa=new_g_ampa,
+            g_gaba_a=new_g_gaba_a,
+            g_nmda_rise=new_nmda_rise,
+            g_nmda_decay=new_nmda_decay,
+            g_gaba_b_rise=new_gaba_b_rise,
+            g_gaba_b_decay=new_gaba_b_decay,
+        )
 
         # 5. STDP (optional)
         if has_plasticity and stdp_params is not None:

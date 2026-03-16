@@ -19,6 +19,8 @@ from bl1.core.synapses import (
     ampa_step,
     compute_synaptic_current,
     gaba_a_step,
+    gaba_b_step,
+    nmda_step,
 )
 
 
@@ -50,7 +52,7 @@ def simulate(
     """Run the full simulation for T timesteps.
 
     The function uses ``jax.lax.scan`` so the entire time loop is
-    compiled into a single XLA program — no Python-level loop overhead.
+    compiled into a single XLA program -- no Python-level loop overhead.
 
     Args:
         params: IzhikevichParams for the population.
@@ -87,9 +89,29 @@ def simulate(
 
         # 4. Synapse conductance updates driven by new spikes
         spikes_f = neuron_state.spikes.astype(jnp.float32)
+
+        # Phase 1: single-exponential receptors
         new_g_ampa = ampa_step(s_state.g_ampa, spikes_f, w_exc, dt)
         new_g_gaba_a = gaba_a_step(s_state.g_gaba_a, spikes_f, W_inh, dt)
-        s_state = SynapseState(g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a)
+
+        # Phase 2: dual-exponential receptors
+        new_nmda_rise, new_nmda_decay, _ = nmda_step(
+            s_state.g_nmda_rise, s_state.g_nmda_decay,
+            spikes_f, w_exc, dt,
+        )
+        new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
+            s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
+            spikes_f, W_inh, dt,
+        )
+
+        s_state = SynapseState(
+            g_ampa=new_g_ampa,
+            g_gaba_a=new_g_gaba_a,
+            g_nmda_rise=new_nmda_rise,
+            g_nmda_decay=new_nmda_decay,
+            g_gaba_b_rise=new_gaba_b_rise,
+            g_gaba_b_decay=new_gaba_b_decay,
+        )
 
         # 5. Optional plasticity update
         if plasticity_fn is not None:
