@@ -1,0 +1,51 @@
+# BL-1 Default Configuration
+# Cortical culture simulation parameters
+
+culture:
+  n_neurons: 100000
+  ei_ratio: 0.8              # 80% excitatory, 20% inhibitory
+  neuron_model: izhikevich
+  substrate_um: [3000, 3000]
+  connectivity: distance_dependent
+  lambda_um: 200.0
+  p_max: 0.21
+  g_exc: 0.05                # excitatory synaptic conductance
+  g_inh: 0.20                # inhibitory synaptic conductance (4x stronger)
+
+neuron_types:
+  # Excitatory (80%)
+  RS:  {a: 0.02, b: 0.2,  c: -65, d: 8, fraction: 0.64}
+  IB:  {a: 0.02, b: 0.2,  c: -55, d: 4, fraction: 0.08}
+  CH:  {a: 0.02, b: 0.2,  c: -50, d: 2, fraction: 0.08}
+  # Inhibitory (20%)
+  FS:  {a: 0.1,  b: 0.2,  c: -65, d: 2, fraction: 0.16}
+  LTS: {a: 0.02, b: 0.25, c: -65, d: 2, fraction: 0.04}
+
+simulation:
+  dt_ms: 0.5
+  v_init: -65.0
+
+synapses:
+  ampa:
+    tau_decay_ms: 2.0
+    e_rev_mv: 0.0
+  gaba_a:
+    tau_decay_ms: 6.0
+    e_rev_mv: -75.0
+
+stdp:
+  A_plus: 0.005
+  A_minus: 0.00525
+  tau_plus_ms: 20.0
+  tau_minus_ms: 50.0
+  w_max: 0.1
+
+mea:
+  config: cl1_64ch
+  detection_radius_um: 100.0
+  activation_radius_um: 75.0
+
+stimulation:
+  amplitude_mv: 150.0
+  pulse_duration_us: 200
+  frequency_range_hz: [4, 40]

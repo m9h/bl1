@@ -1,0 +1,66 @@
+# DishBrain-matched Pong experiment configuration
+# Based on Kagan et al. (2022) Neuron
+
+culture:
+  n_neurons: 100000
+  ei_ratio: 0.8
+  neuron_model: izhikevich
+  substrate_um: [3000, 3000]
+  connectivity: distance_dependent
+  lambda_um: 200.0
+  p_max: 0.21
+  g_exc: 0.05
+  g_inh: 0.20
+
+experiment:
+  duration_s: 300             # 5 minutes per session
+  dt_ms: 0.5
+  game_dt_ms: 20.0            # 50 Hz game update
+  decode_window_ms: 100.0     # motor decoding window
+  feedback: fep               # free energy principle feedback
+
+mea:
+  config: cl1_64ch
+  sensory_channels: [0, 1, 2, 3, 4, 5, 6, 7]
+  motor_regions:
+    up: [24, 25, 26, 27]
+    down: [28, 29, 30, 31]
+
+feedback_protocol:
+  hit:
+    type: predictable
+    frequency_hz: 5
+    amplitude_mv: 150
+    channels: all_sensory       # synchronous across all sensory channels
+  miss:
+    type: unpredictable
+    frequency_hz: 5
+    amplitude_mv: 150
+    channels: random_subset     # random channels, random timing
+  baseline:
+    type: none
+
+pong:
+  paddle_height: 0.2
+  ball_speed: 0.01
+  paddle_speed: 0.02
+
+stdp:
+  enabled: true
+  A_plus: 0.005
+  A_minus: 0.00525
+  tau_plus_ms: 20.0
+  tau_minus_ms: 50.0
+  w_max: 0.1
+
+conditions:
+  # Run all three for comparison (DishBrain Fig. 3)
+  - name: closed_loop
+    feedback: fep
+    stdp: true
+  - name: open_loop
+    feedback: random
+    stdp: true
+  - name: silent
+    feedback: none
+    stdp: true
