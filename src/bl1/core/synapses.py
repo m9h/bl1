@@ -31,6 +31,7 @@ import jax.numpy as jnp
 from jax import Array
 
 from bl1.core.sparse_ops import fast_sparse_input
+from bl1.core.pallas_ops import CSCWeights, event_driven_input
 
 # ---------------------------------------------------------------------------
 # Biophysical constants -- Phase 1 (AMPA, GABA_A)
@@ -352,6 +353,72 @@ def gaba_b_step_fast(
     new_rise = g_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
     new_decay = g_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
     spike_input = fast_sparse_input(W_data, W_rows, W_cols, spikes.astype(jnp.float32), n_post)
+    new_rise = new_rise + spike_input * _GABA_B_NORM
+    new_decay = new_decay + spike_input * _GABA_B_NORM
+    g_gaba_b = new_decay - new_rise
+    return new_rise, new_decay, g_gaba_b
+
+
+# ---------------------------------------------------------------------------
+# Event-driven path — CSC format, processes only spiking neurons
+# ---------------------------------------------------------------------------
+
+def ampa_step_event(
+    g: Array,
+    spikes: Array,
+    csc: CSCWeights,
+    max_active: int,
+    dt: float = 0.5,
+) -> Array:
+    """AMPA step using event-driven CSC kernel (only active synapses)."""
+    decay = jnp.exp(-dt / TAU_AMPA)
+    g_input = event_driven_input(csc, spikes.astype(jnp.float32), max_active)
+    return g * decay + g_input
+
+
+def gaba_a_step_event(
+    g: Array,
+    spikes: Array,
+    csc: CSCWeights,
+    max_active: int,
+    dt: float = 0.5,
+) -> Array:
+    """GABA_A step using event-driven CSC kernel (only active synapses)."""
+    decay = jnp.exp(-dt / TAU_GABA_A)
+    g_input = event_driven_input(csc, spikes.astype(jnp.float32), max_active)
+    return g * decay + g_input
+
+
+def nmda_step_event(
+    g_rise: Array,
+    g_decay: Array,
+    spikes: Array,
+    csc: CSCWeights,
+    max_active: int,
+    dt: float = 0.5,
+) -> tuple[Array, Array, Array]:
+    """NMDA step using event-driven CSC kernel (only active synapses)."""
+    new_rise = g_rise * jnp.exp(-dt / TAU_NMDA_RISE)
+    new_decay = g_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
+    spike_input = event_driven_input(csc, spikes.astype(jnp.float32), max_active)
+    new_rise = new_rise + spike_input * _NMDA_NORM
+    new_decay = new_decay + spike_input * _NMDA_NORM
+    g_nmda = new_decay - new_rise
+    return new_rise, new_decay, g_nmda
+
+
+def gaba_b_step_event(
+    g_rise: Array,
+    g_decay: Array,
+    spikes: Array,
+    csc: CSCWeights,
+    max_active: int,
+    dt: float = 0.5,
+) -> tuple[Array, Array, Array]:
+    """GABA_B step using event-driven CSC kernel (only active synapses)."""
+    new_rise = g_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
+    new_decay = g_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
+    spike_input = event_driven_input(csc, spikes.astype(jnp.float32), max_active)
     new_rise = new_rise + spike_input * _GABA_B_NORM
     new_decay = new_decay + spike_input * _GABA_B_NORM
     g_gaba_b = new_decay - new_rise

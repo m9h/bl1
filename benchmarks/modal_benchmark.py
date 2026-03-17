@@ -8,7 +8,8 @@ Prerequisites:
 
 Usage:
     modal run benchmarks/modal_benchmark.py                     # default benchmark
-    modal run benchmarks/modal_benchmark.py --calibrate         # run calibration sweep
+    modal run benchmarks/modal_benchmark.py --calibrate         # run calibration sweep (no STP)
+    modal run benchmarks/modal_benchmark.py --calibrate-stp     # run STP calibration sweep
     modal run benchmarks/modal_benchmark.py --n-neurons 100000  # specific size
     modal run benchmarks/modal_benchmark.py --test-suite        # run pytest on GPU
 """
@@ -44,6 +45,7 @@ bl1_image = (
     .add_local_dir("benchmarks", "/root/bl1_pkg/benchmarks", copy=True)
     .add_local_dir("scripts", "/root/bl1_pkg/scripts", copy=True)
     .add_local_dir("tests", "/root/bl1_pkg/tests", copy=True)
+    .add_local_dir("configs", "/root/bl1_pkg/configs", copy=True)
     .run_commands("cd /root/bl1_pkg && pip install -e .")
 )
 
@@ -126,6 +128,60 @@ def run_calibration(
 @app.function(
     image=bl1_image,
     gpu="A100",
+    timeout=7200,  # STP sweep is ~216 combos x 30s each
+)
+def run_calibration_stp(
+    n_neurons: int = 5000,
+    duration_ms: float = 30000,
+) -> dict:
+    """Run STP bursting calibration sweep on A100 GPU.
+
+    Uses Tsodyks-Markram short-term plasticity to find parameters that
+    produce realistic spontaneous bursting (Wagenaar 2006 targets).
+    """
+    import sys
+
+    sys.path.insert(0, "/root/bl1_pkg")
+
+    import jax
+
+    backend = jax.default_backend()
+    devices = str(jax.devices())
+    print(f"JAX backend: {backend}")
+    print(f"JAX devices: {devices}")
+
+    t_start = time.perf_counter()
+
+    from scripts.calibrate_bursting_stp import sweep
+
+    scored = sweep()
+
+    total_time = time.perf_counter() - t_start
+
+    # Return top-5 results for analysis
+    top5 = []
+    for r in scored[:5]:
+        top5.append({
+            "params": r["params"],
+            "n_bursts": r["n_bursts"],
+            "burst_rate_per_min": r["burst_rate_per_min"],
+            "ibi_mean": r.get("ibi_mean"),
+            "duration_mean": r.get("duration_mean"),
+            "recruitment_mean": r.get("recruitment_mean"),
+            "mean_firing_rate": r["mean_firing_rate"],
+        })
+
+    return {
+        "backend": backend,
+        "devices": devices,
+        "total_wall_time_s": total_time,
+        "top5": top5,
+    }
+
+
+@app.function(
+    image=bl1_image,
+    gpu="A100",
     timeout=900,
 )
 def run_full_test_suite() -> dict:
@@ -190,6 +246,7 @@ def main(
     n_neurons: int = 0,
     duration_ms: float = 5000,
     calibrate: bool = False,
+    calibrate_stp: bool = False,
     test_suite: bool = False,
 ):
     """Local entrypoint that dispatches to the appropriate remote function.
@@ -197,7 +254,8 @@ def main(
     Args:
         n_neurons: Number of neurons for benchmark (0 = use default list).
         duration_ms: Simulation duration in ms.
-        calibrate: If True, run calibration sweep instead of benchmark.
+        calibrate: If True, run calibration sweep (no STP).
+        calibrate_stp: If True, run STP calibration sweep.
         test_suite: If True, run the full pytest suite on GPU.
     """
     wall_start = time.perf_counter()
@@ -216,6 +274,27 @@ def main(
         print(f"  Passed:     {result['passed']}")
         print(f"  Test time:  {result['test_wall_time_s']:.1f}s (remote)")
         print(f"  Total time: {wall_total:.1f}s (including Modal overhead)")
+
+    elif calibrate_stp:
+        print("Running STP bursting calibration on A100...")
+        print("=" * 60)
+        result = run_calibration_stp.remote()
+        wall_total = time.perf_counter() - wall_start
+
+        print("\n" + "=" * 60)
+        print("STP CALIBRATION COMPLETE")
+        print("=" * 60)
+        print(f"  Backend:    {result['backend']}")
+        print(f"  Devices:    {result['devices']}")
+        print(f"  Remote:     {result['total_wall_time_s']:.1f}s")
+        print(f"  Total:      {wall_total:.1f}s (including Modal overhead)")
+        if result.get("top5"):
+            print("\n  TOP 5 PARAMETER SETS:")
+            for i, r in enumerate(result["top5"], 1):
+                print(f"    #{i}: {r['params']}")
+                print(f"        bursts={r['n_bursts']}, "
+                      f"rate={r['burst_rate_per_min']:.1f}/min, "
+                      f"MFR={r['mean_firing_rate']:.2f}Hz")
 
     elif calibrate:
         print("Running bursting calibration on A100...")

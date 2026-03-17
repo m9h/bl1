@@ -35,6 +35,7 @@ from bl1.core.delays import (
 from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, izhikevich_step_surrogate
 from bl1.core.surrogate import superspike_threshold
 from bl1.core.sparse_ops import RawSparseWeights, bcoo_to_raw, fast_sparse_input
+from bl1.core.pallas_ops import CSCWeights, bcoo_to_csc
 from bl1.core.synapses import (
     SynapseState,
     TAU_AMPA,
@@ -46,13 +47,17 @@ from bl1.core.synapses import (
     _GABA_B_NORM,
     _NMDA_NORM,
     ampa_step,
+    ampa_step_event,
     ampa_step_fast,
     compute_synaptic_current,
     gaba_a_step,
+    gaba_a_step_event,
     gaba_a_step_fast,
     gaba_b_step,
+    gaba_b_step_event,
     gaba_b_step_fast,
     nmda_step,
+    nmda_step_event,
     nmda_step_fast,
 )
 from bl1.plasticity.stp import STPParams, STPState, init_stp_state, stp_step
@@ -86,6 +91,8 @@ def simulate(
     W_inh_delays: Array | None = None,
     stp_params: STPParams | None = None,
     use_fast_sparse: bool = False,
+    use_event_driven: bool = False,
+    max_active: int = 5000,
     surrogate: bool = False,
     surrogate_fn=None,
     surrogate_beta: float = 10.0,
@@ -128,6 +135,16 @@ def simulate(
             Requires that ``W_exc`` and ``W_inh`` are BCOO arrays.
             Currently only supported on the no-delays path.
             Default ``False``.
+        use_event_driven: When ``True``, use the CSC event-driven sparse
+            kernel that only processes synapses from neurons that actually
+            spiked.  This achieves O(active_synapses) per timestep instead
+            of O(total_synapses).  At typical cortical firing rates (5 Hz)
+            with 100K neurons, this is ~400x less work than the full
+            matmul.  Requires BCOO weight matrices.  Not compatible with
+            delays, plasticity, or surrogate mode.  Default ``False``.
+        max_active: Maximum number of simultaneously spiking neurons to
+            process in the event-driven path.  Must be a compile-time
+            constant.  Default 5000 (sufficient for 100K neurons at ~5 Hz).
         surrogate: When ``True``, use :func:`izhikevich_step_surrogate`
             instead of the hard-threshold :func:`izhikevich_step`.  This
             makes the full simulation differentiable via surrogate
@@ -169,6 +186,20 @@ def simulate(
             "surrogate=True is not yet supported with use_fast_sparse=True. "
             "Use the standard no-delay path for differentiable simulation."
         )
+    if surrogate and use_event_driven:
+        raise ValueError(
+            "surrogate=True is not yet supported with use_event_driven=True. "
+            "Use the standard no-delay path for differentiable simulation."
+        )
+    if use_event_driven and use_delays:
+        raise ValueError(
+            "use_event_driven=True is not yet supported with axonal delays."
+        )
+    if use_event_driven and use_fast_sparse:
+        raise ValueError(
+            "use_event_driven and use_fast_sparse are mutually exclusive. "
+            "Choose one sparse acceleration strategy."
+        )
 
     # Resolve default surrogate function
     if surrogate and surrogate_fn is None:
@@ -196,6 +227,12 @@ def simulate(
             W_exc, W_inh, I_external, dt, plasticity_fn,
             W_exc_delays, W_inh_delays, max_delay,
             stp_params,
+        )
+    elif use_event_driven:
+        return _simulate_no_delays_event_driven(
+            params, init_state, syn_state, stdp_state,
+            W_exc, W_inh, I_external, dt, plasticity_fn,
+            stp_params, max_active,
         )
     elif use_fast_sparse:
         return _simulate_no_delays_fast_sparse(
@@ -569,6 +606,127 @@ def _simulate_no_delays_fast_sparse(
 
 
 # =========================================================================
+# Path 1c: event-driven — CSC format, only active synapses (no delays)
+# =========================================================================
+
+def _simulate_no_delays_event_driven(
+    params, init_state, syn_state, stdp_state,
+    W_exc, W_inh, I_external, dt, plasticity_fn,
+    stp_params=None, max_active=5000,
+) -> SimulationResult:
+    """Simulation loop using event-driven CSC sparse kernel.
+
+    Pre-converts BCOO weight matrices to CSC format before the scan loop,
+    then uses :func:`event_driven_input` which only processes outgoing
+    synapses from neurons that actually spiked.  At typical cortical
+    firing rates this is ~400x less work than processing all nonzeros.
+
+    Note: Plasticity that modifies W_exc is NOT supported on this path
+    because CSC conversion is done once before the scan.  If plasticity_fn
+    is provided, a ValueError is raised.
+    """
+    N = init_state.v.shape[0]
+    use_stp = stp_params is not None
+    use_plasticity = plasticity_fn is not None
+
+    if use_plasticity:
+        raise ValueError(
+            "Event-driven path does not support dynamic weight plasticity. "
+            "CSC format is pre-computed and cannot be updated during the scan. "
+            "Use use_fast_sparse=True with plasticity instead."
+        )
+
+    # Pre-convert BCOO matrices to CSC format (once, before scan).
+    csc_exc = bcoo_to_csc(W_exc)
+    csc_inh = bcoo_to_csc(W_inh)
+
+    if use_stp:
+        stp_state_init = init_stp_state(N, stp_params)
+
+        def _step_fn(carry, I_t):
+            neuron_state, s_state, s_stdp, w_exc, stp_st = carry
+
+            I_syn = compute_synaptic_current(s_state, neuron_state.v)
+            I_total = I_syn + I_t
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+            stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
+
+            # Phase 1
+            new_g_ampa = ampa_step_event(
+                s_state.g_ampa, scale, csc_exc, max_active, dt)
+            new_g_gaba_a = gaba_a_step_event(
+                s_state.g_gaba_a, scale, csc_inh, max_active, dt)
+
+            # Phase 2
+            new_nmda_rise, new_nmda_decay, _ = nmda_step_event(
+                s_state.g_nmda_rise, s_state.g_nmda_decay,
+                scale, csc_exc, max_active, dt)
+            new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_event(
+                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
+                scale, csc_inh, max_active, dt)
+
+            s_state = SynapseState(
+                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            new_carry = (neuron_state, s_state, s_stdp, w_exc, stp_st)
+            return new_carry, neuron_state.spikes
+
+        init_carry = (init_state, syn_state, stdp_state, W_exc, stp_state_init)
+        final_carry, spike_history = jax.lax.scan(_step_fn, init_carry, I_external)
+        final_neuron_state, final_syn_state, final_stdp_state, final_W_exc, _ = final_carry
+
+    else:
+        # No STP, no plasticity — simplest event-driven path
+        def _step_fn(carry, I_t):
+            neuron_state, s_state, s_stdp, w_exc = carry
+
+            I_syn = compute_synaptic_current(s_state, neuron_state.v)
+            I_total = I_syn + I_t
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+            spikes_f = neuron_state.spikes.astype(jnp.float32)
+
+            # Phase 1
+            new_g_ampa = ampa_step_event(
+                s_state.g_ampa, spikes_f, csc_exc, max_active, dt)
+            new_g_gaba_a = gaba_a_step_event(
+                s_state.g_gaba_a, spikes_f, csc_inh, max_active, dt)
+
+            # Phase 2
+            new_nmda_rise, new_nmda_decay, _ = nmda_step_event(
+                s_state.g_nmda_rise, s_state.g_nmda_decay,
+                spikes_f, csc_exc, max_active, dt)
+            new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_event(
+                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
+                spikes_f, csc_inh, max_active, dt)
+
+            s_state = SynapseState(
+                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            new_carry = (neuron_state, s_state, s_stdp, w_exc)
+            return new_carry, neuron_state.spikes
+
+        init_carry = (init_state, syn_state, stdp_state, W_exc)
+        final_carry, spike_history = jax.lax.scan(_step_fn, init_carry, I_external)
+        final_neuron_state, final_syn_state, final_stdp_state, final_W_exc = final_carry
+
+    return SimulationResult(
+        final_neuron_state=final_neuron_state,
+        final_syn_state=final_syn_state,
+        final_stdp_state=final_stdp_state,
+        final_W_exc=final_W_exc,
+        spike_history=spike_history,
+    )
+
+
+# =========================================================================
 # Path 2: delayed spike transmission via ring buffer
 # =========================================================================
 
@@ -753,5 +911,6 @@ def _simulate_with_delays(
 # (or rely on tracing through ``simulate`` inside their own jitted code).
 simulate_jit = jax.jit(simulate, static_argnames=(
     "dt", "plasticity_fn", "use_fast_sparse",
+    "use_event_driven", "max_active",
     "surrogate", "surrogate_fn", "surrogate_beta",
 ))

@@ -4,12 +4,15 @@ Profiles simulation wall-clock time at various network sizes:
 - 1K, 5K, 10K, 50K, 100K neurons
 - With and without STDP plasticity
 - With and without the fast sparse (segment_sum) path
+- With and without event-driven (CSC) path
 - Reports: setup time, JIT compile time, simulation time, spikes/sec
 
 Usage:
     python benchmarks/profile_scale.py
     python benchmarks/profile_scale.py --n-neurons 100000 --duration-ms 5000
     python benchmarks/profile_scale.py --use-fast-sparse --n-neurons 50000 100000
+    python benchmarks/profile_scale.py --use-event-driven --n-neurons 50000 100000
+    python benchmarks/profile_scale.py --use-event-driven --max-active 10000 --n-neurons 100000
 """
 
 import argparse
@@ -56,6 +59,7 @@ def benchmark_network_creation(key, n_neurons):
 def benchmark_simulation(
     params, state, syn_state, W_exc, W_inh, n_steps, dt=0.5,
     with_stdp=False, is_exc=None, use_fast_sparse=False,
+    use_event_driven=False, max_active=5000,
 ):
     """Time the core simulation loop."""
     N = state.v.shape[0]
@@ -77,7 +81,12 @@ def benchmark_simulation(
         stdp_state = None
         plasticity_fn = None
 
-    label = "fast-sparse" if use_fast_sparse else "BCOO"
+    if use_event_driven:
+        label = f"event-driven (max_active={max_active})"
+    elif use_fast_sparse:
+        label = "fast-sparse"
+    else:
+        label = "BCOO"
 
     # JIT compile (first call with a small warmup)
     warmup_steps = min(100, n_steps)
@@ -87,6 +96,8 @@ def benchmark_simulation(
         W_exc, W_inh, I_external[:warmup_steps],
         dt=dt, plasticity_fn=plasticity_fn,
         use_fast_sparse=use_fast_sparse,
+        use_event_driven=use_event_driven,
+        max_active=max_active,
     )
     # Block until computation is done
     result.spike_history.block_until_ready()
@@ -99,6 +110,8 @@ def benchmark_simulation(
         W_exc, W_inh, I_external,
         dt=dt, plasticity_fn=plasticity_fn,
         use_fast_sparse=use_fast_sparse,
+        use_event_driven=use_event_driven,
+        max_active=max_active,
     )
     result.spike_history.block_until_ready()
     t_sim = time.perf_counter() - t0
@@ -117,21 +130,31 @@ def benchmark_simulation(
     return t_jit, t_sim, total_spikes
 
 
-def run_benchmarks(sizes=None, duration_ms=5000, dt=0.5, use_fast_sparse=False):
+def run_benchmarks(
+    sizes=None, duration_ms=5000, dt=0.5,
+    use_fast_sparse=False, use_event_driven=False, max_active=5000,
+):
     """Run benchmarks across multiple network sizes."""
     if sizes is None:
         sizes = [1000, 5000, 10000]
 
     n_steps = int(duration_ms / dt)
 
-    sparse_label = " (fast-sparse)" if use_fast_sparse else ""
+    if use_event_driven:
+        sparse_label = f" (event-driven, max_active={max_active})"
+    elif use_fast_sparse:
+        sparse_label = " (fast-sparse)"
+    else:
+        sparse_label = ""
 
     print("=" * 70)
     print(f"BL-1 Performance Benchmark{sparse_label}")
     print(f"JAX backend: {jax.default_backend()}")
     print(f"JAX devices: {jax.devices()}")
     print(f"Duration: {duration_ms}ms = {n_steps} steps at dt={dt}ms")
-    if use_fast_sparse:
+    if use_event_driven:
+        print(f"Sparse backend: event-driven CSC (max_active={max_active})")
+    elif use_fast_sparse:
         print("Sparse backend: fast_sparse_input (segment_sum)")
     else:
         print("Sparse backend: BCOO matmul (default)")
@@ -155,53 +178,66 @@ def run_benchmarks(sizes=None, duration_ms=5000, dt=0.5, use_fast_sparse=False):
         t_jit, t_sim, spikes = benchmark_simulation(
             params, state, syn_state, W_exc, W_inh, n_steps, dt,
             with_stdp=False, use_fast_sparse=use_fast_sparse,
+            use_event_driven=use_event_driven, max_active=max_active,
         )
+        sparse_tag = "event" if use_event_driven else ("fast" if use_fast_sparse else "BCOO")
         results.append({
-            "N": N, "stdp": False, "fast_sparse": use_fast_sparse,
+            "N": N, "stdp": False, "sparse": sparse_tag,
             "jit_s": t_jit, "sim_s": t_sim,
             "spikes": spikes, "steps": n_steps,
         })
 
         # Only run STDP benchmark for smaller networks (it's slower)
-        if N <= 10000:
+        # Event-driven does not support STDP
+        if N <= 10000 and not use_event_driven:
             print("\n[3] Simulation WITH STDP:")
             t_jit2, t_sim2, spikes2 = benchmark_simulation(
                 params, state, syn_state, W_exc, W_inh, n_steps, dt,
                 with_stdp=True, is_exc=is_exc, use_fast_sparse=use_fast_sparse,
             )
             results.append({
-                "N": N, "stdp": True, "fast_sparse": use_fast_sparse,
+                "N": N, "stdp": True, "sparse": sparse_tag,
                 "jit_s": t_jit2, "sim_s": t_sim2,
                 "spikes": spikes2, "steps": n_steps,
             })
 
-        # Comparison: if fast_sparse not already the default, also run it
-        # for large networks to show the speedup
-        if not use_fast_sparse and N >= 10000:
+        # Comparison runs for large networks
+        if not use_fast_sparse and not use_event_driven and N >= 10000:
             print("\n[4] Simulation WITHOUT STDP (fast-sparse):")
             t_jit3, t_sim3, spikes3 = benchmark_simulation(
                 params, state, syn_state, W_exc, W_inh, n_steps, dt,
                 with_stdp=False, use_fast_sparse=True,
             )
             results.append({
-                "N": N, "stdp": False, "fast_sparse": True,
+                "N": N, "stdp": False, "sparse": "fast",
                 "jit_s": t_jit3, "sim_s": t_sim3,
                 "spikes": spikes3, "steps": n_steps,
             })
 
+            print("\n[5] Simulation WITHOUT STDP (event-driven):")
+            t_jit4, t_sim4, spikes4 = benchmark_simulation(
+                params, state, syn_state, W_exc, W_inh, n_steps, dt,
+                with_stdp=False, use_event_driven=True, max_active=max_active,
+            )
+            results.append({
+                "N": N, "stdp": False, "sparse": "event",
+                "jit_s": t_jit4, "sim_s": t_sim4,
+                "spikes": spikes4, "steps": n_steps,
+            })
+
     # Summary table
-    print(f"\n{'=' * 80}")
+    print(f"\n{'=' * 85}")
     print("SUMMARY")
-    print(f"{'=' * 80}")
+    print(f"{'=' * 85}")
     print(
         f"{'N':>8} {'STDP':>5} {'Sparse':>12} "
         f"{'JIT(s)':>8} {'Sim(s)':>8} {'RT Factor':>10} {'Spikes':>10}"
     )
-    print("-" * 75)
+    print("-" * 80)
     for r in results:
         sim_ms = r["steps"] * dt
         rt = sim_ms / (r["sim_s"] * 1000) if r["sim_s"] > 0 else float("inf")
-        sparse_str = "fast" if r.get("fast_sparse") else "BCOO"
+        sparse_str = r.get("sparse", "BCOO")
         print(
             f"{r['N']:>8,} {'Yes' if r['stdp'] else 'No':>5} {sparse_str:>12} "
             f"{r['jit_s']:>8.2f} {r['sim_s']:>8.2f} {rt:>10.2f}x {r['spikes']:>10,}"
@@ -223,11 +259,24 @@ if __name__ == "__main__":
         "--use-fast-sparse", action="store_true", default=False,
         help="Use fast_sparse_input (segment_sum) instead of BCOO matmul",
     )
+    parser.add_argument(
+        "--use-event-driven", action="store_true", default=False,
+        help="Use event-driven CSC kernel (only processes active synapses)",
+    )
+    parser.add_argument(
+        "--max-active", type=int, default=5000,
+        help="Max simultaneously active neurons for event-driven path (default: 5000)",
+    )
     args = parser.parse_args()
+
+    if args.use_event_driven and args.use_fast_sparse:
+        parser.error("--use-event-driven and --use-fast-sparse are mutually exclusive")
 
     run_benchmarks(
         sizes=args.n_neurons,
         duration_ms=args.duration_ms,
         dt=args.dt,
         use_fast_sparse=args.use_fast_sparse,
+        use_event_driven=args.use_event_driven,
+        max_active=args.max_active,
     )

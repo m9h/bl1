@@ -38,6 +38,13 @@ from bl1.core.sparse_ops import (
     fast_sparse_input,
     fast_sparse_input_raw,
 )
+from bl1.core.pallas_ops import (
+    CSCWeights,
+    bcoo_to_csc,
+    csc_event_driven_input,
+    event_driven_input,
+    is_pallas_available,
+)
 from bl1.core.delays import (
     DelayBufferState,
     init_delay_buffer,
@@ -100,6 +107,11 @@ __all__ = [
     "bcoo_to_raw",
     "fast_sparse_input",
     "fast_sparse_input_raw",
+    "CSCWeights",
+    "bcoo_to_csc",
+    "csc_event_driven_input",
+    "event_driven_input",
+    "is_pallas_available",
     "DelayBufferState",
     "init_delay_buffer",
     "delay_buffer_step",
