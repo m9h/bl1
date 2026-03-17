@@ -21,6 +21,14 @@ from bl1.core.synapses import (
     create_synapse_state,
 )
 from bl1.core.integrator import simulate, simulate_jit, SimulationResult
+from bl1.core.delays import (
+    DelayBufferState,
+    init_delay_buffer,
+    delay_buffer_step,
+    read_delayed_spikes,
+    compute_max_delay,
+    delays_to_dense,
+)
 from bl1.core.jaxley_adapter import (
     is_jaxley_available,
     JaxleyConfig,
@@ -62,4 +70,10 @@ __all__ = [
     "HybridParams",
     "HybridState",
     "hybrid_step",
+    "DelayBufferState",
+    "init_delay_buffer",
+    "delay_buffer_step",
+    "read_delayed_spikes",
+    "compute_max_delay",
+    "delays_to_dense",
 ]
