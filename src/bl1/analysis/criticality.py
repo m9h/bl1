@@ -33,10 +33,16 @@ def _bin_spikes(
         ``(n_bins,)`` array of total spike counts per bin.
     """
     raster = np.asarray(spike_raster, dtype=np.float32)
+    if raster.size == 0:
+        return np.array([], dtype=np.float64)
+
     steps_per_bin = max(int(round(bin_ms / dt_ms)), 1)
 
     T = raster.shape[0]
     n_bins = T // steps_per_bin
+
+    if n_bins == 0:
+        return np.array([], dtype=np.float64)
 
     # Trim any leftover timesteps that don't fill a complete bin
     trimmed = raster[: n_bins * steps_per_bin]

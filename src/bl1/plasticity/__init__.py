@@ -1,4 +1,16 @@
-"""Plasticity rules: STDP, homeostatic scaling, short-term plasticity, structural."""
+"""Synaptic plasticity rules operating on multiple timescales.
+
+- **STDP** (ms) -- Eligibility-trace spike-timing-dependent plasticity for
+  excitatory weight modification.
+- **STP** (ms-s) -- Tsodyks-Markram short-term facilitation and depression.
+- **Homeostatic scaling** (s-min) -- Multiplicative synaptic scaling to
+  maintain a target firing rate.
+- **Structural plasticity** (min-h) -- Activity-dependent synapse creation
+  and elimination.
+
+All rules support both dense ``jnp.ndarray`` and sparse ``BCOO`` weight
+matrices except structural plasticity, which operates on dense matrices only.
+"""
 
 from bl1.plasticity.stdp import STDPState, STDPParams, init_stdp_state, stdp_update
 

@@ -1,4 +1,9 @@
-"""Virtual multi-electrode array."""
+"""Virtual multi-electrode array (MEA) for recording and stimulation.
+
+Provides electrode configurations (CL1 64-channel and MaxOne HD-MEA),
+neuron-electrode spatial mapping, spike detection, firing-rate estimation,
+LFP approximation, and electrical stimulation with linear distance falloff.
+"""
 
 from bl1.mea.electrode import (
     MEA,

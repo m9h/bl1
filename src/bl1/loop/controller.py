@@ -141,7 +141,23 @@ def _make_scan_step(
 # ---------------------------------------------------------------------------
 
 class ClosedLoop:
-    """Closed-loop controller connecting culture to game environment."""
+    """Closed-loop controller connecting a cortical culture to a game.
+
+    Wires together the neural simulation, MEA interface, sensory encoder,
+    motor decoder, and game environment into a single experiment loop.
+    Call :meth:`run` to execute the full experiment and collect results.
+
+    Example::
+
+        loop = ClosedLoop(
+            network_params, izh_params, mea,
+            sensory_channels=[0, 1, 2, 3, 4, 5, 6, 7],
+            motor_regions={"up": [56, 57], "down": [62, 63]},
+            game=Pong(),
+            stdp_params=STDPParams(),
+        )
+        results = loop.run(key, duration_s=300, feedback="fep")
+    """
 
     def __init__(
         self,
@@ -153,16 +169,27 @@ class ClosedLoop:
         game,
         stdp_params: STDPParams | None = None,
     ) -> None:
-        """
-        Args:
-            network_params: NetworkParams (positions, is_excitatory, W_exc, W_inh, delays).
-            neuron_params: IzhikevichParams for the population.
-            mea: MEA instance with ``.config`` (MEAConfig).
-            sensory_channels: List of 8 electrode indices for sensory input.
-            motor_regions: Dict ``{"up": [...], "down": [...]}`` of
-                electrode indices for motor output regions.
-            game: Pong instance.
-            stdp_params: Optional STDPParams.  ``None`` disables plasticity.
+        """Initialise the closed-loop controller.
+
+        Parameters
+        ----------
+        network_params : NetworkParams
+            Static network description (positions, is_excitatory, W_exc,
+            W_inh, delays).
+        neuron_params : IzhikevichParams
+            Per-neuron Izhikevich model parameters.
+        mea : MEA
+            Virtual multi-electrode array instance.
+        sensory_channels : list of int
+            Eight electrode indices that serve as sensory input channels.
+        motor_regions : dict
+            ``{"up": [...], "down": [...]}`` mapping action names to lists
+            of electrode indices that define the motor readout regions.
+        game : Pong
+            Game environment instance.
+        stdp_params : STDPParams or None
+            STDP hyperparameters.  Pass ``None`` to disable online
+            plasticity during the experiment.
         """
         self.network_params = network_params
         self.neuron_params = neuron_params
@@ -183,17 +210,34 @@ class ClosedLoop:
     ) -> dict[str, Any]:
         """Run a closed-loop experiment.
 
-        Args:
-            key: JAX PRNGKey.
-            duration_s: Total experiment duration in seconds.
-            dt_ms: Neural simulation timestep in ms.
-            feedback: Feedback mode -- ``"fep"``, ``"open_loop"``, or ``"silent"``.
-            game_dt_ms: Game update interval in ms.
-            decode_window_ms: Width of the spike-history window for motor decoding in ms.
+        Parameters
+        ----------
+        key : jax.Array
+            JAX PRNG key.
+        duration_s : float
+            Total experiment duration in seconds (default 300).
+        dt_ms : float
+            Neural simulation timestep in ms (default 0.5).
+        feedback : str
+            Feedback mode -- ``"fep"``, ``"open_loop"``, or ``"silent"``.
+        game_dt_ms : float
+            Game update interval in ms (default 20).
+        decode_window_ms : float
+            Width of the spike-history window for motor decoding in ms
+            (default 100).
 
-        Returns:
-            Dict with spike_history, game_events, rally_lengths,
-            final_neuron_state, final_game_state, population_rates.
+        Returns
+        -------
+        dict
+            - ``spike_history`` -- ``(T_ds, N)`` boolean numpy array
+              (downsampled spike raster; empty if memory limit exceeded).
+            - ``game_events`` -- list of ``(time_ms, "hit"|"miss")`` tuples.
+            - ``rally_lengths`` -- ``(n_rallies,)`` int32 numpy array.
+            - ``final_neuron_state`` -- NeuronState at experiment end.
+            - ``final_syn_state`` -- SynapseState at experiment end.
+            - ``final_game_state`` -- PongState at experiment end.
+            - ``population_rates`` -- ``(n_game_steps, 2)`` numpy array of
+              ``(total_spikes, step_index)`` per game update.
         """
         if feedback not in ("fep", "open_loop", "silent"):
             raise ValueError(f"Unknown feedback mode '{feedback}'.")

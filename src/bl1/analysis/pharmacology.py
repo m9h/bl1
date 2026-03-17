@@ -111,19 +111,29 @@ def apply_drug(
     return new_W_exc, new_W_inh
 
 
-def apply_drug_to_synapses(syn_state, drug: DrugEffect):
+def apply_drug_to_synapses(
+    syn_state: "bl1.core.synapses.SynapseState",
+    drug: DrugEffect,
+) -> "bl1.core.synapses.SynapseState":
     """Scale existing synaptic conductances by drug factors.
 
     Useful for applying a drug mid-simulation.  Operates on a
     :class:`~bl1.core.synapses.SynapseState` and returns a new one with
     conductance values scaled according to the drug profile.
 
-    Args:
-        syn_state: A ``SynapseState`` named-tuple.
-        drug: DrugEffect specifying scaling factors.
+    Parameters
+    ----------
+    syn_state : SynapseState
+        Current synaptic conductance state.
+    drug : DrugEffect
+        Drug profile specifying per-receptor scaling factors.
 
-    Returns:
-        A new ``SynapseState`` with conductances scaled by the drug.
+    Returns
+    -------
+    SynapseState
+        New state with conductances multiplied by the drug's scaling
+        factors (``ampa_scale``, ``nmda_scale``, ``gaba_a_scale``,
+        ``gaba_b_scale``).
     """
     return syn_state._replace(
         g_ampa=syn_state.g_ampa * drug.ampa_scale,

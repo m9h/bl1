@@ -1,4 +1,12 @@
-"""Core neuron and synapse models."""
+"""Core neuron and synapse models.
+
+Provides two spiking neuron models (Izhikevich and AdEx), four receptor-type
+conductance-based synapses (AMPA, GABA_A, NMDA, GABA_B), and a JIT-compiled
+time-stepper built on ``jax.lax.scan``.
+
+All state containers are JAX-compatible NamedTuples and all step functions
+are vectorised over the neuron population.
+"""
 
 from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, create_population
 from bl1.core.adex import AdExParams, AdExState, adex_step, create_adex_population
@@ -13,6 +21,18 @@ from bl1.core.synapses import (
     create_synapse_state,
 )
 from bl1.core.integrator import simulate, simulate_jit, SimulationResult
+from bl1.core.jaxley_adapter import (
+    is_jaxley_available,
+    JaxleyConfig,
+    JaxleyNetwork,
+    JaxleyState,
+)
+from bl1.core.hybrid import (
+    HybridPopulation,
+    HybridParams,
+    HybridState,
+    hybrid_step,
+)
 
 __all__ = [
     "IzhikevichParams",
@@ -34,4 +54,12 @@ __all__ = [
     "simulate",
     "simulate_jit",
     "SimulationResult",
+    "is_jaxley_available",
+    "JaxleyConfig",
+    "JaxleyNetwork",
+    "JaxleyState",
+    "HybridPopulation",
+    "HybridParams",
+    "HybridState",
+    "hybrid_step",
 ]
