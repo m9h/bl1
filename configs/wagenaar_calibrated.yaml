@@ -1,0 +1,68 @@
+# BL-1 Wagenaar-Calibrated Configuration
+# Parameters tuned to reproduce spontaneous bursting observed in
+# mature rat cortical cultures (DIV 21-35) as reported in:
+#
+#   Wagenaar, Pine & Potter (2006) "An extremely rich repertoire
+#   of bursting patterns in the activity of cortical cultures"
+#   J Neurosci 26(31):7610-7625
+#
+# Target statistics:
+#   - Inter-burst interval: 3-30 s (mean ~10 s)
+#   - Burst duration: 100-1000 ms (mean ~200-300 ms)
+#   - Network burst rate: 3-20 bursts/min
+#   - Recruitment fraction: 20-80% of neurons per burst
+#   - Spontaneous firing between bursts: 0.1-2 Hz
+
+culture:
+  n_neurons: 5000
+  ei_ratio: 0.8
+  neuron_model: izhikevich
+  substrate_um: [3000, 3000]
+  connectivity: distance_dependent
+  lambda_um: 200.0
+  p_max: 0.15                # slightly lower than default (0.21) to avoid
+                              # seizure-like hypersynchrony in dense networks
+  g_exc: 0.05                # excitatory conductance — tuned for burst cascade
+  g_inh: 0.20                # inhibitory conductance (4x excitatory)
+
+neuron_types:
+  # Excitatory (80%)
+  RS:  {a: 0.02, b: 0.2,  c: -65, d: 8, fraction: 0.64}
+  IB:  {a: 0.02, b: 0.2,  c: -55, d: 4, fraction: 0.08}
+  CH:  {a: 0.02, b: 0.2,  c: -50, d: 2, fraction: 0.08}
+  # Inhibitory (20%)
+  FS:  {a: 0.1,  b: 0.2,  c: -65, d: 2, fraction: 0.16}
+  LTS: {a: 0.02, b: 0.25, c: -65, d: 2, fraction: 0.04}
+
+simulation:
+  dt_ms: 0.5
+  v_init: -65.0
+  duration_ms: 60000          # 60 s — long enough for good burst statistics
+
+# Background drive: tonic current + Gaussian noise to bring neurons
+# near threshold so that stochastic fluctuations can nucleate bursts.
+background:
+  mean: 3.5                   # tonic depolarising current (a.u.)
+  std: 2.5                    # noise amplitude (sigma)
+
+synapses:
+  ampa:
+    tau_decay_ms: 2.0
+    e_rev_mv: 0.0
+  gaba_a:
+    tau_decay_ms: 6.0
+    e_rev_mv: -75.0
+
+# Burst detection parameters (matched to Wagenaar analysis methods)
+burst_detection:
+  threshold_std: 2.0          # onset threshold = mean + 2*std of pop rate
+  min_duration_ms: 50.0       # discard very short transients
+
+# STDP disabled for spontaneous activity calibration
+stdp:
+  enabled: false
+
+mea:
+  config: cl1_64ch
+  detection_radius_um: 100.0
+  activation_radius_um: 75.0

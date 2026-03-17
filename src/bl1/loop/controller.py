@@ -28,9 +28,24 @@ import jax.numpy as jnp
 import numpy as np
 from jax import Array
 
+from bl1.core.delays import (
+    compute_max_delay,
+    delay_buffer_step,
+    delays_to_dense,
+    init_delay_buffer,
+    read_delayed_spikes,
+)
 from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step
 from bl1.core.synapses import (
     SynapseState,
+    TAU_AMPA,
+    TAU_GABA_A,
+    TAU_GABA_B_DECAY,
+    TAU_GABA_B_RISE,
+    TAU_NMDA_DECAY,
+    TAU_NMDA_RISE,
+    _GABA_B_NORM,
+    _NMDA_NORM,
     ampa_step,
     compute_synaptic_current,
     create_synapse_state,
@@ -72,7 +87,7 @@ def _feedback_open_loop(key: Array, n_neurons: int) -> Array:
 
 
 # ---------------------------------------------------------------------------
-# Inner simulation step (designed for jax.lax.scan)
+# Inner simulation step (designed for jax.lax.scan) -- no delays
 # ---------------------------------------------------------------------------
 
 def _make_scan_step(
@@ -83,7 +98,10 @@ def _make_scan_step(
     stdp_params: STDPParams | None,
     is_excitatory: Array,
 ):
-    """Build a single-step function suitable for ``jax.lax.scan``."""
+    """Build a single-step function suitable for ``jax.lax.scan``.
+
+    This is the original instantaneous-transmission variant.
+    """
 
     def step_fn(carry, I_ext_t):
         neuron_state, syn_state, stdp_state, W_exc = carry
@@ -131,6 +149,91 @@ def _make_scan_step(
             )
 
         new_carry = (neuron_state, syn_state, stdp_state, W_exc)
+        return new_carry, neuron_state.spikes
+
+    return step_fn
+
+
+# ---------------------------------------------------------------------------
+# Inner simulation step with axonal conduction delays
+# ---------------------------------------------------------------------------
+
+def _make_scan_step_delayed(
+    params: IzhikevichParams,
+    W_inh: Array,
+    W_exc_delays: Array,
+    W_inh_delays: Array,
+    dt: float,
+    has_plasticity: bool,
+    stdp_params: STDPParams | None,
+    is_excitatory: Array,
+):
+    """Build a delay-aware single-step function for ``jax.lax.scan``.
+
+    The carry includes a :class:`DelayBufferState` as its fifth element.
+    """
+
+    def step_fn(carry, I_ext_t):
+        neuron_state, syn_state, stdp_state, W_exc, delay_buf = carry
+
+        # 1. Synaptic current
+        I_syn = compute_synaptic_current(syn_state, neuron_state.v)
+
+        # 2. Total input
+        I_total = I_syn + I_ext_t
+
+        # 3. Neuron update
+        neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+        # 4. Write new spikes into delay buffer
+        spikes_f = neuron_state.spikes.astype(jnp.float32)
+        delay_buf = delay_buffer_step(delay_buf, spikes_f)
+
+        # 5. Read delayed synaptic input
+        g_input_exc = read_delayed_spikes(delay_buf, W_exc_delays, W_exc)
+        g_input_inh = read_delayed_spikes(delay_buf, W_inh_delays, W_inh)
+
+        # Phase 1: AMPA & GABA_A (single-exponential decay + delayed input)
+        new_g_ampa = syn_state.g_ampa * jnp.exp(-dt / TAU_AMPA) + g_input_exc
+        new_g_gaba_a = syn_state.g_gaba_a * jnp.exp(-dt / TAU_GABA_A) + g_input_inh
+
+        # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
+        new_nmda_rise = (
+            syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
+            + g_input_exc * _NMDA_NORM
+        )
+        new_nmda_decay = (
+            syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
+            + g_input_exc * _NMDA_NORM
+        )
+
+        # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
+        new_gaba_b_rise = (
+            syn_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
+            + g_input_inh * _GABA_B_NORM
+        )
+        new_gaba_b_decay = (
+            syn_state.g_gaba_b_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
+            + g_input_inh * _GABA_B_NORM
+        )
+
+        syn_state = SynapseState(
+            g_ampa=new_g_ampa,
+            g_gaba_a=new_g_gaba_a,
+            g_nmda_rise=new_nmda_rise,
+            g_nmda_decay=new_nmda_decay,
+            g_gaba_b_rise=new_gaba_b_rise,
+            g_gaba_b_decay=new_gaba_b_decay,
+        )
+
+        # 6. STDP (optional)
+        if has_plasticity and stdp_params is not None:
+            stdp_state, W_exc = stdp_update(
+                stdp_state, stdp_params, neuron_state.spikes,
+                W_exc, is_excitatory, dt,
+            )
+
+        new_carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf)
         return new_carry, neuron_state.spikes
 
     return step_fn
@@ -276,11 +379,37 @@ class ClosedLoop:
         has_plasticity = self.stdp_params is not None
         stdp_state = init_stdp_state(n_neurons)
 
-        # --- Build scan step ---
-        scan_step = _make_scan_step(
-            self.neuron_params, W_inh, dt_ms,
-            has_plasticity, self.stdp_params, is_excitatory,
-        )
+        # --- Determine whether to use axonal delays -------------------------
+        delays_raw = getattr(self.network_params, "delays", None)
+        use_delays = delays_raw is not None and int(jnp.max(delays_to_dense(delays_raw))) > 0
+
+        if use_delays:
+            delays_dense = delays_to_dense(delays_raw)
+            # Excitatory delays: keep only entries where W_exc != 0
+            # Inhibitory delays: keep only entries where W_inh != 0
+            # For simplicity, use the same delay matrix for both (the
+            # topology already ensures zero weights mask out irrelevant
+            # delays via the weight multiplication inside
+            # read_delayed_spikes).
+            W_exc_delays = delays_dense.astype(jnp.int32)
+            W_inh_delays = delays_dense.astype(jnp.int32)
+            max_delay = max(1, compute_max_delay(delays_dense))
+            delay_buf = init_delay_buffer(n_neurons, max_delay)
+
+            scan_step = _make_scan_step_delayed(
+                self.neuron_params, W_inh, W_exc_delays, W_inh_delays,
+                dt_ms, has_plasticity, self.stdp_params, is_excitatory,
+            )
+            logger.info(
+                "  Using axonal conduction delays (max_delay=%d steps)",
+                max_delay,
+            )
+        else:
+            delay_buf = None
+            scan_step = _make_scan_step(
+                self.neuron_params, W_inh, dt_ms,
+                has_plasticity, self.stdp_params, is_excitatory,
+            )
 
         # --- Recording buffers ---
         spike_window = np.zeros((decode_window_steps, n_neurons), dtype=np.float32)
@@ -352,9 +481,14 @@ class ClosedLoop:
             I_external = I_external.at[0].add(feedback_current)
 
             # 6. Inner simulation (jax.lax.scan)
-            carry = (neuron_state, syn_state, stdp_state, W_exc)
-            carry, spikes_block = jax.lax.scan(scan_step, carry, I_external)
-            neuron_state, syn_state, stdp_state, W_exc = carry
+            if use_delays:
+                carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf)
+                carry, spikes_block = jax.lax.scan(scan_step, carry, I_external)
+                neuron_state, syn_state, stdp_state, W_exc, delay_buf = carry
+            else:
+                carry = (neuron_state, syn_state, stdp_state, W_exc)
+                carry, spikes_block = jax.lax.scan(scan_step, carry, I_external)
+                neuron_state, syn_state, stdp_state, W_exc = carry
 
             # 7. Update rolling spike window
             spikes_block_np = np.asarray(spikes_block, dtype=np.float32)
