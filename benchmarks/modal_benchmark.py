@@ -38,12 +38,12 @@ bl1_image = (
         "numpy>=1.24",
         "pytest>=7.0",
     )
-    .copy_local_dir("src/bl1", "/root/bl1_pkg/src/bl1")
-    .copy_local_file("pyproject.toml", "/root/bl1_pkg/pyproject.toml")
-    .copy_local_file("README.md", "/root/bl1_pkg/README.md")
-    .copy_local_dir("benchmarks", "/root/bl1_pkg/benchmarks")
-    .copy_local_dir("scripts", "/root/bl1_pkg/scripts")
-    .copy_local_dir("tests", "/root/bl1_pkg/tests")
+    .add_local_dir("src/bl1", "/root/bl1_pkg/src/bl1", copy=True)
+    .add_local_file("pyproject.toml", "/root/bl1_pkg/pyproject.toml", copy=True)
+    .add_local_file("README.md", "/root/bl1_pkg/README.md", copy=True)
+    .add_local_dir("benchmarks", "/root/bl1_pkg/benchmarks", copy=True)
+    .add_local_dir("scripts", "/root/bl1_pkg/scripts", copy=True)
+    .add_local_dir("tests", "/root/bl1_pkg/tests", copy=True)
     .run_commands("cd /root/bl1_pkg && pip install -e .")
 )
 

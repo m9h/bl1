@@ -166,18 +166,27 @@ def build_neuron_electrode_map(
     ``radius_um`` of the electrode centre.  This mask is computed once
     at experiment setup and reused for spike detection and stimulation.
 
+    Handles both 2D and 3D neuron positions.  For 3D neurons the
+    electrodes are assumed to sit on the z=0 surface; distance is
+    computed as 3D Euclidean distance from each neuron to the electrode
+    position at (x, y, z=0).
+
     Args:
-        neuron_positions: Neuron (x, y) positions in um, shape (N, 2).
-        electrode_positions: Electrode (x, y) positions in um,
-            shape (E, 2).
+        neuron_positions: Neuron positions in um, shape (N, 2) or (N, 3).
+        electrode_positions: Electrode positions in um, shape (E, 2).
         radius_um: Detection or activation radius in um.
 
     Returns:
         Boolean mask of shape (E, N) where ``mask[e, n]`` is ``True``
         when neuron *n* is within ``radius_um`` of electrode *e*.
     """
-    # (E, 1, 2) - (1, N, 2) -> (E, N, 2) -> (E, N)
-    diff = electrode_positions[:, None, :] - neuron_positions[None, :, :]
+    n_dim = neuron_positions.shape[1]
+    if n_dim == 3 and electrode_positions.shape[1] == 2:
+        # Pad electrode positions with z=0 for 3D distance calculation
+        electrode_3d = jnp.pad(electrode_positions, ((0, 0), (0, 1)))
+        diff = electrode_3d[:, None, :] - neuron_positions[None, :, :]
+    else:
+        diff = electrode_positions[:, None, :] - neuron_positions[None, :, :]
     dist = jnp.sqrt(jnp.sum(diff ** 2, axis=-1))  # (E, N)
     return dist < radius_um
 
@@ -199,9 +208,15 @@ def build_neuron_electrode_map_sparse(
     dense map would require 2.6 billion entries; this function stores
     only the True entries.
 
+    Handles both 2D and 3D neuron positions.  For 3D neurons the
+    electrodes are assumed to sit on the z=0 surface; spatial binning
+    uses only the x-y coordinates, and the full 3D Euclidean distance
+    is used for the radius test.
+
     The algorithm:
 
-    1. Bin neurons into square cells of side ``radius_um``.
+    1. Bin neurons into square cells of side ``radius_um`` (using x-y
+       coordinates only, even for 3D neurons).
     2. For each electrode, look up bins within one cell of the
        electrode's own bin (a 3x3 neighbourhood).
     3. Compute distances only to candidate neurons in those bins.
@@ -209,9 +224,8 @@ def build_neuron_electrode_map_sparse(
     5. Return as a BCOO matrix with boolean data.
 
     Args:
-        neuron_positions: Neuron (x, y) positions in um, shape (N, 2).
-        electrode_positions: Electrode (x, y) positions in um,
-            shape (E, 2).
+        neuron_positions: Neuron positions in um, shape (N, 2) or (N, 3).
+        electrode_positions: Electrode positions in um, shape (E, 2).
         radius_um: Detection radius in um.
 
     Returns:
@@ -223,17 +237,24 @@ def build_neuron_electrode_map_sparse(
     elec_np = np.asarray(electrode_positions)
     N = pos_np.shape[0]
     E = elec_np.shape[0]
+    neuron_3d = pos_np.shape[1] == 3
+
+    # For 3D neurons, pad electrode positions with z=0 for distance calc
+    if neuron_3d and elec_np.shape[1] == 2:
+        elec_3d = np.pad(elec_np, ((0, 0), (0, 1)))
+    else:
+        elec_3d = elec_np
 
     bin_size = radius_um
 
-    # --- bin neurons -------------------------------------------------------
-    neuron_bins = (pos_np / bin_size).astype(np.int32)  # (N, 2)
+    # --- bin neurons (always using x-y coordinates) ------------------------
+    neuron_bins_xy = (pos_np[:, :2] / bin_size).astype(np.int32)  # (N, 2)
     bins: dict[tuple[int, int], list[int]] = defaultdict(list)
     for i in range(N):
-        bins[(int(neuron_bins[i, 0]), int(neuron_bins[i, 1]))].append(i)
+        bins[(int(neuron_bins_xy[i, 0]), int(neuron_bins_xy[i, 1]))].append(i)
 
-    # Precompute electrode bin indices
-    elec_bins = (elec_np / bin_size).astype(np.int32)  # (E, 2)
+    # Precompute electrode bin indices (always 2D)
+    elec_bins = (elec_np[:, :2] / bin_size).astype(np.int32)  # (E, 2)
 
     # Relative offsets: 3x3 neighbourhood
     offsets = [
@@ -257,9 +278,10 @@ def build_neuron_electrode_map_sparse(
             continue
 
         cand_arr = np.array(candidates, dtype=np.int64)
-        cand_pos = pos_np[cand_arr]  # (C, 2)
+        cand_pos = pos_np[cand_arr]  # (C, 2) or (C, 3)
 
-        diff = cand_pos - elec_np[e]  # (C, 2)
+        # Distance: use full dimensionality (2D or 3D)
+        diff = cand_pos - elec_3d[e]  # (C, 2) or (C, 3)
         dist = np.sqrt(np.sum(diff ** 2, axis=-1))  # (C,)
 
         within = dist < radius_um
@@ -394,8 +416,11 @@ def compute_lfp(
     A minimum distance clamp (1 um) prevents divergence when a neuron
     sits exactly at an electrode.
 
+    Handles both 2D and 3D neuron positions.  For 3D neurons the
+    electrodes are assumed to sit on the z=0 surface.
+
     Args:
-        neuron_positions: (N, 2) neuron positions in um.
+        neuron_positions: (N, 2) or (N, 3) neuron positions in um.
         electrode_positions: (E, 2) electrode positions in um.
         membrane_currents: (N,) total membrane current per neuron
             (in nA, with the convention that negative = inward current).
@@ -404,7 +429,11 @@ def compute_lfp(
     Returns:
         (E,) LFP values at each electrode in uV.
     """
-    # (E, 1, 2) - (1, N, 2) -> (E, N, 2) -> (E, N)
+    n_dim = neuron_positions.shape[1]
+    if n_dim == 3 and electrode_positions.shape[1] == 2:
+        # Pad electrode positions with z=0 for 3D distance calculation
+        electrode_positions = jnp.pad(electrode_positions, ((0, 0), (0, 1)))
+    # (E, 1, D) - (1, N, D) -> (E, N, D) -> (E, N)
     diff = electrode_positions[:, None, :] - neuron_positions[None, :, :]
     dist_um = jnp.sqrt(jnp.sum(diff ** 2, axis=-1))  # (E, N)
 

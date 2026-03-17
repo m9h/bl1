@@ -30,6 +30,8 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
+from bl1.core.sparse_ops import fast_sparse_input
+
 # ---------------------------------------------------------------------------
 # Biophysical constants -- Phase 1 (AMPA, GABA_A)
 # ---------------------------------------------------------------------------
@@ -280,3 +282,81 @@ def compute_synaptic_current(syn_state: SynapseState, v: Array) -> Array:
     I_gaba_b = g_gaba_b * (E_GABA_B - v)
 
     return I_ampa + I_nmda + I_gaba_a + I_gaba_b
+
+
+# ---------------------------------------------------------------------------
+# Fast sparse path — uses segment_sum instead of BCOO matmul
+# ---------------------------------------------------------------------------
+
+@jax.jit
+def ampa_step_fast(
+    g: Array,
+    spikes: Array,
+    W_data: Array,
+    W_rows: Array,
+    W_cols: Array,
+    n_post: int,
+    dt: float = 0.5,
+) -> Array:
+    """AMPA step using :func:`fast_sparse_input` instead of BCOO matmul."""
+    decay = jnp.exp(-dt / TAU_AMPA)
+    g_input = fast_sparse_input(W_data, W_rows, W_cols, spikes.astype(jnp.float32), n_post)
+    return g * decay + g_input
+
+
+@jax.jit
+def gaba_a_step_fast(
+    g: Array,
+    spikes: Array,
+    W_data: Array,
+    W_rows: Array,
+    W_cols: Array,
+    n_post: int,
+    dt: float = 0.5,
+) -> Array:
+    """GABA_A step using :func:`fast_sparse_input` instead of BCOO matmul."""
+    decay = jnp.exp(-dt / TAU_GABA_A)
+    g_input = fast_sparse_input(W_data, W_rows, W_cols, spikes.astype(jnp.float32), n_post)
+    return g * decay + g_input
+
+
+@jax.jit
+def nmda_step_fast(
+    g_rise: Array,
+    g_decay: Array,
+    spikes: Array,
+    W_data: Array,
+    W_rows: Array,
+    W_cols: Array,
+    n_post: int,
+    dt: float = 0.5,
+) -> tuple[Array, Array, Array]:
+    """NMDA step using :func:`fast_sparse_input` instead of BCOO matmul."""
+    new_rise = g_rise * jnp.exp(-dt / TAU_NMDA_RISE)
+    new_decay = g_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
+    spike_input = fast_sparse_input(W_data, W_rows, W_cols, spikes.astype(jnp.float32), n_post)
+    new_rise = new_rise + spike_input * _NMDA_NORM
+    new_decay = new_decay + spike_input * _NMDA_NORM
+    g_nmda = new_decay - new_rise
+    return new_rise, new_decay, g_nmda
+
+
+@jax.jit
+def gaba_b_step_fast(
+    g_rise: Array,
+    g_decay: Array,
+    spikes: Array,
+    W_data: Array,
+    W_rows: Array,
+    W_cols: Array,
+    n_post: int,
+    dt: float = 0.5,
+) -> tuple[Array, Array, Array]:
+    """GABA_B step using :func:`fast_sparse_input` instead of BCOO matmul."""
+    new_rise = g_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
+    new_decay = g_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
+    spike_input = fast_sparse_input(W_data, W_rows, W_cols, spikes.astype(jnp.float32), n_post)
+    new_rise = new_rise + spike_input * _GABA_B_NORM
+    new_decay = new_decay + spike_input * _GABA_B_NORM
+    g_gaba_b = new_decay - new_rise
+    return new_rise, new_decay, g_gaba_b

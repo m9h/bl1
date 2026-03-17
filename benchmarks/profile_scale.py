@@ -3,11 +3,13 @@
 Profiles simulation wall-clock time at various network sizes:
 - 1K, 5K, 10K, 50K, 100K neurons
 - With and without STDP plasticity
+- With and without the fast sparse (segment_sum) path
 - Reports: setup time, JIT compile time, simulation time, spikes/sec
 
 Usage:
     python benchmarks/profile_scale.py
     python benchmarks/profile_scale.py --n-neurons 100000 --duration-ms 5000
+    python benchmarks/profile_scale.py --use-fast-sparse --n-neurons 50000 100000
 """
 
 import argparse
@@ -53,7 +55,7 @@ def benchmark_network_creation(key, n_neurons):
 
 def benchmark_simulation(
     params, state, syn_state, W_exc, W_inh, n_steps, dt=0.5,
-    with_stdp=False, is_exc=None,
+    with_stdp=False, is_exc=None, use_fast_sparse=False,
 ):
     """Time the core simulation loop."""
     N = state.v.shape[0]
@@ -75,6 +77,8 @@ def benchmark_simulation(
         stdp_state = None
         plasticity_fn = None
 
+    label = "fast-sparse" if use_fast_sparse else "BCOO"
+
     # JIT compile (first call with a small warmup)
     warmup_steps = min(100, n_steps)
     t0 = time.perf_counter()
@@ -82,6 +86,7 @@ def benchmark_simulation(
         params, state, syn_state, stdp_state,
         W_exc, W_inh, I_external[:warmup_steps],
         dt=dt, plasticity_fn=plasticity_fn,
+        use_fast_sparse=use_fast_sparse,
     )
     # Block until computation is done
     result.spike_history.block_until_ready()
@@ -93,6 +98,7 @@ def benchmark_simulation(
         params, state, syn_state, stdp_state,
         W_exc, W_inh, I_external,
         dt=dt, plasticity_fn=plasticity_fn,
+        use_fast_sparse=use_fast_sparse,
     )
     result.spike_history.block_until_ready()
     t_sim = time.perf_counter() - t0
@@ -100,6 +106,7 @@ def benchmark_simulation(
     total_spikes = int(jnp.sum(result.spike_history))
     sim_time_ms = n_steps * dt
 
+    print(f"  Backend:      {label}")
     print(f"  JIT compile:  {t_jit:.3f}s ({warmup_steps} steps warmup)")
     print(f"  Simulation:   {t_sim:.3f}s ({n_steps} steps = {sim_time_ms / 1000:.1f}s simulated)")
     print(f"  Realtime factor: {sim_time_ms / (t_sim * 1000):.2f}x")
@@ -110,18 +117,24 @@ def benchmark_simulation(
     return t_jit, t_sim, total_spikes
 
 
-def run_benchmarks(sizes=None, duration_ms=5000, dt=0.5):
+def run_benchmarks(sizes=None, duration_ms=5000, dt=0.5, use_fast_sparse=False):
     """Run benchmarks across multiple network sizes."""
     if sizes is None:
         sizes = [1000, 5000, 10000]
 
     n_steps = int(duration_ms / dt)
 
+    sparse_label = " (fast-sparse)" if use_fast_sparse else ""
+
     print("=" * 70)
-    print("BL-1 Performance Benchmark")
+    print(f"BL-1 Performance Benchmark{sparse_label}")
     print(f"JAX backend: {jax.default_backend()}")
     print(f"JAX devices: {jax.devices()}")
     print(f"Duration: {duration_ms}ms = {n_steps} steps at dt={dt}ms")
+    if use_fast_sparse:
+        print("Sparse backend: fast_sparse_input (segment_sum)")
+    else:
+        print("Sparse backend: BCOO matmul (default)")
     print("=" * 70)
 
     results = []
@@ -141,10 +154,11 @@ def run_benchmarks(sizes=None, duration_ms=5000, dt=0.5):
         print("\n[2] Simulation WITHOUT STDP:")
         t_jit, t_sim, spikes = benchmark_simulation(
             params, state, syn_state, W_exc, W_inh, n_steps, dt,
-            with_stdp=False,
+            with_stdp=False, use_fast_sparse=use_fast_sparse,
         )
         results.append({
-            "N": N, "stdp": False, "jit_s": t_jit, "sim_s": t_sim,
+            "N": N, "stdp": False, "fast_sparse": use_fast_sparse,
+            "jit_s": t_jit, "sim_s": t_sim,
             "spikes": spikes, "steps": n_steps,
         })
 
@@ -153,24 +167,43 @@ def run_benchmarks(sizes=None, duration_ms=5000, dt=0.5):
             print("\n[3] Simulation WITH STDP:")
             t_jit2, t_sim2, spikes2 = benchmark_simulation(
                 params, state, syn_state, W_exc, W_inh, n_steps, dt,
-                with_stdp=True, is_exc=is_exc,
+                with_stdp=True, is_exc=is_exc, use_fast_sparse=use_fast_sparse,
             )
             results.append({
-                "N": N, "stdp": True, "jit_s": t_jit2, "sim_s": t_sim2,
+                "N": N, "stdp": True, "fast_sparse": use_fast_sparse,
+                "jit_s": t_jit2, "sim_s": t_sim2,
                 "spikes": spikes2, "steps": n_steps,
             })
 
+        # Comparison: if fast_sparse not already the default, also run it
+        # for large networks to show the speedup
+        if not use_fast_sparse and N >= 10000:
+            print("\n[4] Simulation WITHOUT STDP (fast-sparse):")
+            t_jit3, t_sim3, spikes3 = benchmark_simulation(
+                params, state, syn_state, W_exc, W_inh, n_steps, dt,
+                with_stdp=False, use_fast_sparse=True,
+            )
+            results.append({
+                "N": N, "stdp": False, "fast_sparse": True,
+                "jit_s": t_jit3, "sim_s": t_sim3,
+                "spikes": spikes3, "steps": n_steps,
+            })
+
     # Summary table
-    print(f"\n{'=' * 70}")
+    print(f"\n{'=' * 80}")
     print("SUMMARY")
-    print(f"{'=' * 70}")
-    print(f"{'N':>8} {'STDP':>5} {'JIT(s)':>8} {'Sim(s)':>8} {'RT Factor':>10} {'Spikes':>10}")
-    print("-" * 60)
+    print(f"{'=' * 80}")
+    print(
+        f"{'N':>8} {'STDP':>5} {'Sparse':>12} "
+        f"{'JIT(s)':>8} {'Sim(s)':>8} {'RT Factor':>10} {'Spikes':>10}"
+    )
+    print("-" * 75)
     for r in results:
         sim_ms = r["steps"] * dt
         rt = sim_ms / (r["sim_s"] * 1000) if r["sim_s"] > 0 else float("inf")
+        sparse_str = "fast" if r.get("fast_sparse") else "BCOO"
         print(
-            f"{r['N']:>8,} {'Yes' if r['stdp'] else 'No':>5} "
+            f"{r['N']:>8,} {'Yes' if r['stdp'] else 'No':>5} {sparse_str:>12} "
             f"{r['jit_s']:>8.2f} {r['sim_s']:>8.2f} {rt:>10.2f}x {r['spikes']:>10,}"
         )
 
@@ -186,6 +219,15 @@ if __name__ == "__main__":
         help="Simulation duration in ms",
     )
     parser.add_argument("--dt", type=float, default=0.5)
+    parser.add_argument(
+        "--use-fast-sparse", action="store_true", default=False,
+        help="Use fast_sparse_input (segment_sum) instead of BCOO matmul",
+    )
     args = parser.parse_args()
 
-    run_benchmarks(sizes=args.n_neurons, duration_ms=args.duration_ms, dt=args.dt)
+    run_benchmarks(
+        sizes=args.n_neurons,
+        duration_ms=args.duration_ms,
+        dt=args.dt,
+        use_fast_sparse=args.use_fast_sparse,
+    )

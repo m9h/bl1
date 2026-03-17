@@ -8,7 +8,7 @@ and related transforms without modification.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -23,7 +23,7 @@ class NetworkParams(NamedTuple):
     """Static (non-plastic) network parameters."""
 
     positions: jnp.ndarray
-    """(N, 2) neuron soma positions in μm."""
+    """(N, 2) or (N, 3) neuron soma positions in μm."""
 
     is_excitatory: jnp.ndarray
     """(N,) boolean mask — True for excitatory neurons."""
@@ -157,7 +157,12 @@ except ImportError:
 # High-level culture factory
 # ---------------------------------------------------------------------------
 
-from bl1.network.topology import build_connectivity, place_neurons
+from bl1.network.topology import (
+    build_connectivity,
+    place_neurons,
+    place_neurons_layered,
+    place_neurons_spheroid,
+)
 
 
 @dataclass
@@ -176,14 +181,24 @@ class Culture:
         ei_ratio: float = 0.8,
         neuron_model: str = "izhikevich",
         substrate_um: Tuple[float, float] = (3000.0, 3000.0),
+        substrate_3d: Optional[Tuple[float, float, float]] = None,
+        placement: str = "uniform",
         connectivity: str = "distance_dependent",
         lambda_um: float = 200.0,
         p_max: float = 0.21,
         g_exc: float = 0.05,
         g_inh: float = 0.20,
         dt: float = 0.5,
+        spheroid_radius_um: float = 500.0,
+        spheroid_center_um: Optional[Tuple[float, float, float]] = None,
+        layer_depths_um: Optional[tuple] = None,
+        layer_densities: Optional[tuple] = None,
     ) -> Tuple[NetworkParams, CultureState, IzhikevichParams]:
         """Create a new cortical culture from scratch.
+
+        Supports 2D (flat substrate) and 3D (organoid / spheroid / layered
+        cortical) cultures.  The default behaviour is identical to the
+        original 2D-only implementation for full backward compatibility.
 
         Parameters
         ----------
@@ -197,6 +212,17 @@ class Culture:
             Currently only ``"izhikevich"`` is supported.
         substrate_um : tuple of float
             (width, height) of the MEA substrate in μm.
+        substrate_3d : tuple of float or None
+            (width, height, depth) in μm for 3-D uniform placement.
+            Only used when *placement* is ``"uniform"``.
+        placement : str
+            Placement strategy:
+
+            - ``"uniform"`` (default) — uniform random placement.  Uses
+              *substrate_3d* if provided, otherwise *substrate_um* for 2D.
+            - ``"spheroid"`` — uniform within a 3D sphere (organoid model).
+            - ``"layered"`` — layered 3D cortical structure with six layers.
+
         connectivity : str
             Connectivity model — ``"distance_dependent"`` (default).
         lambda_um : float
@@ -209,6 +235,14 @@ class Culture:
             Baseline inhibitory synaptic weight.
         dt : float
             Simulation timestep in ms.
+        spheroid_radius_um : float
+            Radius of the spheroid in μm (only for ``placement="spheroid"``).
+        spheroid_center_um : tuple of float or None
+            Centre of the spheroid (only for ``placement="spheroid"``).
+        layer_depths_um : tuple of float or None
+            Per-layer thicknesses (only for ``placement="layered"``).
+        layer_densities : tuple of float or None
+            Per-layer relative densities (only for ``placement="layered"``).
 
         Returns
         -------
@@ -224,8 +258,33 @@ class Culture:
         # --- PRNG key splitting ------------------------------------------
         k_place, k_pop, k_conn = jax.random.split(key, 3)
 
-        # 1. Place neurons on the substrate
-        positions = place_neurons(k_place, n_neurons, substrate_um)
+        # 1. Place neurons on the substrate or in a 3D volume
+        if placement == "uniform":
+            positions = place_neurons(
+                k_place, n_neurons, substrate_um, substrate_3d=substrate_3d,
+            )
+        elif placement == "spheroid":
+            positions = place_neurons_spheroid(
+                k_place, n_neurons,
+                radius_um=spheroid_radius_um,
+                center_um=spheroid_center_um,
+            )
+        elif placement == "layered":
+            kwargs_layered: dict = dict(
+                substrate_um=substrate_um,
+            )
+            if layer_depths_um is not None:
+                kwargs_layered["layer_depths_um"] = layer_depths_um
+            if layer_densities is not None:
+                kwargs_layered["layer_densities"] = layer_densities
+            positions = place_neurons_layered(
+                k_place, n_neurons, **kwargs_layered,
+            )
+        else:
+            raise ValueError(
+                f"Unsupported placement: {placement!r}. "
+                f"Expected 'uniform', 'spheroid', or 'layered'."
+            )
 
         # 2. Create neuron population (E/I assignment + Izhikevich params)
         izh_params, _init_state, is_excitatory = create_population(k_pop, n_neurons, ei_ratio)

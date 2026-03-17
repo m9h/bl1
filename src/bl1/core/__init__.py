@@ -21,6 +21,12 @@ from bl1.core.synapses import (
     create_synapse_state,
 )
 from bl1.core.integrator import simulate, simulate_jit, SimulationResult
+from bl1.core.sparse_ops import (
+    RawSparseWeights,
+    bcoo_to_raw,
+    fast_sparse_input,
+    fast_sparse_input_raw,
+)
 from bl1.core.delays import (
     DelayBufferState,
     init_delay_buffer,
@@ -70,6 +76,10 @@ __all__ = [
     "HybridParams",
     "HybridState",
     "hybrid_step",
+    "RawSparseWeights",
+    "bcoo_to_raw",
+    "fast_sparse_input",
+    "fast_sparse_input_raw",
     "DelayBufferState",
     "init_delay_buffer",
     "delay_buffer_step",

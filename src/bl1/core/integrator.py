@@ -33,6 +33,7 @@ from bl1.core.delays import (
     read_delayed_spikes,
 )
 from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step
+from bl1.core.sparse_ops import RawSparseWeights, bcoo_to_raw, fast_sparse_input
 from bl1.core.synapses import (
     SynapseState,
     TAU_AMPA,
@@ -44,10 +45,14 @@ from bl1.core.synapses import (
     _GABA_B_NORM,
     _NMDA_NORM,
     ampa_step,
+    ampa_step_fast,
     compute_synaptic_current,
     gaba_a_step,
+    gaba_a_step_fast,
     gaba_b_step,
+    gaba_b_step_fast,
     nmda_step,
+    nmda_step_fast,
 )
 from bl1.plasticity.stp import STPParams, STPState, init_stp_state, stp_step
 
@@ -79,6 +84,7 @@ def simulate(
     W_exc_delays: Array | None = None,
     W_inh_delays: Array | None = None,
     stp_params: STPParams | None = None,
+    use_fast_sparse: bool = False,
 ) -> SimulationResult:
     """Run the full simulation for T timesteps.
 
@@ -111,6 +117,13 @@ def simulate(
             are modulated by a per-neuron scale factor (facilitation /
             depression) before driving conductance updates.  Pass
             ``None`` to disable STP (default).
+        use_fast_sparse: When ``True``, replace BCOO sparse matmul
+            (``weights @ spikes``) with :func:`fast_sparse_input` using
+            pre-extracted COO arrays and ``segment_sum``.  This is
+            significantly faster for large sparse networks (50K+ neurons).
+            Requires that ``W_exc`` and ``W_inh`` are BCOO arrays.
+            Currently only supported on the no-delays path.
+            Default ``False``.
 
     Returns:
         A ``SimulationResult`` namedtuple containing final states and the
@@ -131,6 +144,12 @@ def simulate(
             params, init_state, syn_state, stdp_state,
             W_exc, W_inh, I_external, dt, plasticity_fn,
             W_exc_delays, W_inh_delays, max_delay,
+            stp_params,
+        )
+    elif use_fast_sparse:
+        return _simulate_no_delays_fast_sparse(
+            params, init_state, syn_state, stdp_state,
+            W_exc, W_inh, I_external, dt, plasticity_fn,
             stp_params,
         )
     else:
@@ -263,6 +282,207 @@ def _simulate_no_delays(
         init_carry = (init_state, syn_state, stdp_state, W_exc)
         final_carry, spike_history = jax.lax.scan(_step_fn, init_carry, I_external)
 
+        final_neuron_state, final_syn_state, final_stdp_state, final_W_exc = final_carry
+
+    return SimulationResult(
+        final_neuron_state=final_neuron_state,
+        final_syn_state=final_syn_state,
+        final_stdp_state=final_stdp_state,
+        final_W_exc=final_W_exc,
+        spike_history=spike_history,
+    )
+
+
+# =========================================================================
+# Path 1b: fast sparse — segment_sum instead of BCOO matmul (no delays)
+# =========================================================================
+
+def _simulate_no_delays_fast_sparse(
+    params, init_state, syn_state, stdp_state,
+    W_exc, W_inh, I_external, dt, plasticity_fn,
+    stp_params=None,
+) -> SimulationResult:
+    """Simulation loop using fast_sparse_input instead of BCOO matmul.
+
+    Pre-extracts COO arrays from BCOO weight matrices before the scan
+    loop, then uses :func:`fast_sparse_input` (gather-multiply + segment_sum)
+    which avoids BCOO's internal dispatch overhead and is significantly
+    faster for large sparse networks.
+
+    Note: STP support is included.  Plasticity that modifies W_exc
+    dynamically is supported but the raw arrays are re-extracted on each
+    step from the carry (the plasticity_fn returns updated W_exc, so we
+    must re-extract).  For non-plastic runs the raw arrays are captured
+    in the closure as constants.
+    """
+    N = init_state.v.shape[0]
+    use_stp = stp_params is not None
+    use_plasticity = plasticity_fn is not None
+
+    # Pre-extract COO arrays from BCOO matrices.
+    # W_inh is never modified so we extract once.
+    raw_inh = bcoo_to_raw(W_inh)
+    inh_data, inh_rows, inh_cols = raw_inh.data, raw_inh.rows, raw_inh.cols
+
+    if use_stp:
+        stp_state_init = init_stp_state(N, stp_params)
+
+        if not use_plasticity:
+            # W_exc is constant — pre-extract once
+            raw_exc = bcoo_to_raw(W_exc)
+            exc_data, exc_rows, exc_cols = raw_exc.data, raw_exc.rows, raw_exc.cols
+
+            def _step_fn(carry, I_t):
+                neuron_state, s_state, s_stdp, w_exc, stp_st = carry
+
+                I_syn = compute_synaptic_current(s_state, neuron_state.v)
+                I_total = I_syn + I_t
+                neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+                stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
+
+                # Phase 1
+                new_g_ampa = ampa_step_fast(
+                    s_state.g_ampa, scale, exc_data, exc_rows, exc_cols, N, dt)
+                new_g_gaba_a = gaba_a_step_fast(
+                    s_state.g_gaba_a, scale, inh_data, inh_rows, inh_cols, N, dt)
+
+                # Phase 2
+                new_nmda_rise, new_nmda_decay, _ = nmda_step_fast(
+                    s_state.g_nmda_rise, s_state.g_nmda_decay,
+                    scale, exc_data, exc_rows, exc_cols, N, dt)
+                new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
+                    s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
+                    scale, inh_data, inh_rows, inh_cols, N, dt)
+
+                s_state = SynapseState(
+                    g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
+                    g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
+                    g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                )
+
+                new_carry = (neuron_state, s_state, s_stdp, w_exc, stp_st)
+                return new_carry, neuron_state.spikes
+
+            init_carry = (init_state, syn_state, stdp_state, W_exc, stp_state_init)
+            final_carry, spike_history = jax.lax.scan(_step_fn, init_carry, I_external)
+            final_neuron_state, final_syn_state, final_stdp_state, final_W_exc, _ = final_carry
+        else:
+            # Plasticity modifies W_exc — fall back to BCOO matmul for exc
+            # (since raw arrays would need re-extraction each step)
+            def _step_fn(carry, I_t):
+                neuron_state, s_state, s_stdp, w_exc, stp_st = carry
+
+                I_syn = compute_synaptic_current(s_state, neuron_state.v)
+                I_total = I_syn + I_t
+                neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+                stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
+
+                # Use BCOO for exc (plasticity may change it), fast for inh
+                new_g_ampa = ampa_step(s_state.g_ampa, scale, w_exc, dt)
+                new_g_gaba_a = gaba_a_step_fast(
+                    s_state.g_gaba_a, scale, inh_data, inh_rows, inh_cols, N, dt)
+
+                new_nmda_rise, new_nmda_decay, _ = nmda_step(
+                    s_state.g_nmda_rise, s_state.g_nmda_decay,
+                    scale, w_exc, dt)
+                new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
+                    s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
+                    scale, inh_data, inh_rows, inh_cols, N, dt)
+
+                s_state = SynapseState(
+                    g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
+                    g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
+                    g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                )
+
+                s_stdp, w_exc = plasticity_fn(s_stdp, neuron_state.spikes, w_exc)
+
+                new_carry = (neuron_state, s_state, s_stdp, w_exc, stp_st)
+                return new_carry, neuron_state.spikes
+
+            init_carry = (init_state, syn_state, stdp_state, W_exc, stp_state_init)
+            final_carry, spike_history = jax.lax.scan(_step_fn, init_carry, I_external)
+            final_neuron_state, final_syn_state, final_stdp_state, final_W_exc, _ = final_carry
+
+    elif not use_plasticity:
+        # No STP, no plasticity — both weight matrices are constant
+        raw_exc = bcoo_to_raw(W_exc)
+        exc_data, exc_rows, exc_cols = raw_exc.data, raw_exc.rows, raw_exc.cols
+
+        def _step_fn(carry, I_t):
+            neuron_state, s_state, s_stdp, w_exc = carry
+
+            I_syn = compute_synaptic_current(s_state, neuron_state.v)
+            I_total = I_syn + I_t
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+            spikes_f = neuron_state.spikes.astype(jnp.float32)
+
+            # Phase 1
+            new_g_ampa = ampa_step_fast(
+                s_state.g_ampa, spikes_f, exc_data, exc_rows, exc_cols, N, dt)
+            new_g_gaba_a = gaba_a_step_fast(
+                s_state.g_gaba_a, spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+
+            # Phase 2
+            new_nmda_rise, new_nmda_decay, _ = nmda_step_fast(
+                s_state.g_nmda_rise, s_state.g_nmda_decay,
+                spikes_f, exc_data, exc_rows, exc_cols, N, dt)
+            new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
+                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
+                spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+
+            s_state = SynapseState(
+                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            new_carry = (neuron_state, s_state, s_stdp, w_exc)
+            return new_carry, neuron_state.spikes
+
+        init_carry = (init_state, syn_state, stdp_state, W_exc)
+        final_carry, spike_history = jax.lax.scan(_step_fn, init_carry, I_external)
+        final_neuron_state, final_syn_state, final_stdp_state, final_W_exc = final_carry
+
+    else:
+        # Plasticity but no STP — use fast for inh, BCOO for exc
+        def _step_fn(carry, I_t):
+            neuron_state, s_state, s_stdp, w_exc = carry
+
+            I_syn = compute_synaptic_current(s_state, neuron_state.v)
+            I_total = I_syn + I_t
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+            spikes_f = neuron_state.spikes.astype(jnp.float32)
+
+            # Use BCOO for exc (plasticity may change it), fast for inh
+            new_g_ampa = ampa_step(s_state.g_ampa, spikes_f, w_exc, dt)
+            new_g_gaba_a = gaba_a_step_fast(
+                s_state.g_gaba_a, spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+
+            new_nmda_rise, new_nmda_decay, _ = nmda_step(
+                s_state.g_nmda_rise, s_state.g_nmda_decay,
+                spikes_f, w_exc, dt)
+            new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
+                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
+                spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+
+            s_state = SynapseState(
+                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            s_stdp, w_exc = plasticity_fn(s_stdp, neuron_state.spikes, w_exc)
+
+            new_carry = (neuron_state, s_state, s_stdp, w_exc)
+            return new_carry, neuron_state.spikes
+
+        init_carry = (init_state, syn_state, stdp_state, W_exc)
+        final_carry, spike_history = jax.lax.scan(_step_fn, init_carry, I_external)
         final_neuron_state, final_syn_state, final_stdp_state, final_W_exc = final_carry
 
     return SimulationResult(
@@ -457,4 +677,4 @@ def _simulate_with_delays(
 # pass ``plasticity_fn=None`` (the default) can call this directly; those
 # who supply a plasticity callback should jit the outer call themselves
 # (or rely on tracing through ``simulate`` inside their own jitted code).
-simulate_jit = jax.jit(simulate, static_argnames=("dt", "plasticity_fn"))
+simulate_jit = jax.jit(simulate, static_argnames=("dt", "plasticity_fn", "use_fast_sparse"))
