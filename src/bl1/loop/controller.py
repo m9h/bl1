@@ -57,6 +57,7 @@ from bl1.games.pong import EVENT_HIT, EVENT_MISS
 from bl1.loop.decoding import decode_motor
 from bl1.loop.encoding import STIM_AMPLITUDE_MV, encode_sensory
 from bl1.plasticity.stdp import STDPParams, STDPState, init_stdp_state, stdp_update
+from bl1.plasticity.stp import STPParams, STPState, init_stp_state, stp_step
 
 logger = logging.getLogger(__name__)
 
@@ -97,59 +98,115 @@ def _make_scan_step(
     has_plasticity: bool,
     stdp_params: STDPParams | None,
     is_excitatory: Array,
+    stp_params: STPParams | None = None,
 ):
     """Build a single-step function suitable for ``jax.lax.scan``.
 
     This is the original instantaneous-transmission variant.
+
+    When *stp_params* is provided, the scan carry includes an
+    :class:`STPState` as its fifth element and presynaptic spikes are
+    modulated by short-term plasticity before driving conductance updates.
     """
+    use_stp = stp_params is not None
 
-    def step_fn(carry, I_ext_t):
-        neuron_state, syn_state, stdp_state, W_exc = carry
+    if use_stp:
+        def step_fn(carry, I_ext_t):
+            neuron_state, syn_state, stdp_state, W_exc, stp_st = carry
 
-        # 1. Synaptic current
-        I_syn = compute_synaptic_current(syn_state, neuron_state.v)
+            # 1. Synaptic current
+            I_syn = compute_synaptic_current(syn_state, neuron_state.v)
 
-        # 2. Total input
-        I_total = I_syn + I_ext_t
+            # 2. Total input
+            I_total = I_syn + I_ext_t
 
-        # 3. Neuron update
-        neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+            # 3. Neuron update
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
 
-        # 4. Synapse conductance update
-        spikes_f = neuron_state.spikes.astype(jnp.float32)
+            # 4. STP modulation
+            stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
 
-        # Phase 1: single-exponential receptors
-        new_g_ampa = ampa_step(syn_state.g_ampa, spikes_f, W_exc, dt)
-        new_g_gaba_a = gaba_a_step(syn_state.g_gaba_a, spikes_f, W_inh, dt)
+            # 5. Synapse conductance update (STP-modulated)
+            # Phase 1: single-exponential receptors
+            new_g_ampa = ampa_step(syn_state.g_ampa, scale, W_exc, dt)
+            new_g_gaba_a = gaba_a_step(syn_state.g_gaba_a, scale, W_inh, dt)
 
-        # Phase 2: dual-exponential receptors
-        new_nmda_rise, new_nmda_decay, _ = nmda_step(
-            syn_state.g_nmda_rise, syn_state.g_nmda_decay,
-            spikes_f, W_exc, dt,
-        )
-        new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
-            syn_state.g_gaba_b_rise, syn_state.g_gaba_b_decay,
-            spikes_f, W_inh, dt,
-        )
-
-        syn_state = SynapseState(
-            g_ampa=new_g_ampa,
-            g_gaba_a=new_g_gaba_a,
-            g_nmda_rise=new_nmda_rise,
-            g_nmda_decay=new_nmda_decay,
-            g_gaba_b_rise=new_gaba_b_rise,
-            g_gaba_b_decay=new_gaba_b_decay,
-        )
-
-        # 5. STDP (optional)
-        if has_plasticity and stdp_params is not None:
-            stdp_state, W_exc = stdp_update(
-                stdp_state, stdp_params, neuron_state.spikes,
-                W_exc, is_excitatory, dt,
+            # Phase 2: dual-exponential receptors
+            new_nmda_rise, new_nmda_decay, _ = nmda_step(
+                syn_state.g_nmda_rise, syn_state.g_nmda_decay,
+                scale, W_exc, dt,
+            )
+            new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
+                syn_state.g_gaba_b_rise, syn_state.g_gaba_b_decay,
+                scale, W_inh, dt,
             )
 
-        new_carry = (neuron_state, syn_state, stdp_state, W_exc)
-        return new_carry, neuron_state.spikes
+            syn_state = SynapseState(
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            # 6. STDP (optional)
+            if has_plasticity and stdp_params is not None:
+                stdp_state, W_exc = stdp_update(
+                    stdp_state, stdp_params, neuron_state.spikes,
+                    W_exc, is_excitatory, dt,
+                )
+
+            new_carry = (neuron_state, syn_state, stdp_state, W_exc, stp_st)
+            return new_carry, neuron_state.spikes
+    else:
+        def step_fn(carry, I_ext_t):
+            neuron_state, syn_state, stdp_state, W_exc = carry
+
+            # 1. Synaptic current
+            I_syn = compute_synaptic_current(syn_state, neuron_state.v)
+
+            # 2. Total input
+            I_total = I_syn + I_ext_t
+
+            # 3. Neuron update
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+            # 4. Synapse conductance update
+            spikes_f = neuron_state.spikes.astype(jnp.float32)
+
+            # Phase 1: single-exponential receptors
+            new_g_ampa = ampa_step(syn_state.g_ampa, spikes_f, W_exc, dt)
+            new_g_gaba_a = gaba_a_step(syn_state.g_gaba_a, spikes_f, W_inh, dt)
+
+            # Phase 2: dual-exponential receptors
+            new_nmda_rise, new_nmda_decay, _ = nmda_step(
+                syn_state.g_nmda_rise, syn_state.g_nmda_decay,
+                spikes_f, W_exc, dt,
+            )
+            new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
+                syn_state.g_gaba_b_rise, syn_state.g_gaba_b_decay,
+                spikes_f, W_inh, dt,
+            )
+
+            syn_state = SynapseState(
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            # 5. STDP (optional)
+            if has_plasticity and stdp_params is not None:
+                stdp_state, W_exc = stdp_update(
+                    stdp_state, stdp_params, neuron_state.spikes,
+                    W_exc, is_excitatory, dt,
+                )
+
+            new_carry = (neuron_state, syn_state, stdp_state, W_exc)
+            return new_carry, neuron_state.spikes
 
     return step_fn
 
@@ -167,74 +224,145 @@ def _make_scan_step_delayed(
     has_plasticity: bool,
     stdp_params: STDPParams | None,
     is_excitatory: Array,
+    stp_params: STPParams | None = None,
 ):
     """Build a delay-aware single-step function for ``jax.lax.scan``.
 
     The carry includes a :class:`DelayBufferState` as its fifth element.
+    When *stp_params* is provided, the carry also includes an
+    :class:`STPState` as its sixth element and the STP-modulated ``scale``
+    vector is written into the delay buffer instead of raw spikes.
     """
+    use_stp = stp_params is not None
 
-    def step_fn(carry, I_ext_t):
-        neuron_state, syn_state, stdp_state, W_exc, delay_buf = carry
+    if use_stp:
+        def step_fn(carry, I_ext_t):
+            neuron_state, syn_state, stdp_state, W_exc, delay_buf, stp_st = carry
 
-        # 1. Synaptic current
-        I_syn = compute_synaptic_current(syn_state, neuron_state.v)
+            # 1. Synaptic current
+            I_syn = compute_synaptic_current(syn_state, neuron_state.v)
 
-        # 2. Total input
-        I_total = I_syn + I_ext_t
+            # 2. Total input
+            I_total = I_syn + I_ext_t
 
-        # 3. Neuron update
-        neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+            # 3. Neuron update
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
 
-        # 4. Write new spikes into delay buffer
-        spikes_f = neuron_state.spikes.astype(jnp.float32)
-        delay_buf = delay_buffer_step(delay_buf, spikes_f)
+            # 4. STP modulation
+            stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
 
-        # 5. Read delayed synaptic input
-        g_input_exc = read_delayed_spikes(delay_buf, W_exc_delays, W_exc)
-        g_input_inh = read_delayed_spikes(delay_buf, W_inh_delays, W_inh)
+            # 5. Write STP-modulated spikes into delay buffer
+            delay_buf = delay_buffer_step(delay_buf, scale)
 
-        # Phase 1: AMPA & GABA_A (single-exponential decay + delayed input)
-        new_g_ampa = syn_state.g_ampa * jnp.exp(-dt / TAU_AMPA) + g_input_exc
-        new_g_gaba_a = syn_state.g_gaba_a * jnp.exp(-dt / TAU_GABA_A) + g_input_inh
+            # 6. Read delayed synaptic input
+            g_input_exc = read_delayed_spikes(delay_buf, W_exc_delays, W_exc)
+            g_input_inh = read_delayed_spikes(delay_buf, W_inh_delays, W_inh)
 
-        # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
-        new_nmda_rise = (
-            syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
-            + g_input_exc * _NMDA_NORM
-        )
-        new_nmda_decay = (
-            syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
-            + g_input_exc * _NMDA_NORM
-        )
+            # Phase 1: AMPA & GABA_A (single-exponential decay + delayed input)
+            new_g_ampa = syn_state.g_ampa * jnp.exp(-dt / TAU_AMPA) + g_input_exc
+            new_g_gaba_a = syn_state.g_gaba_a * jnp.exp(-dt / TAU_GABA_A) + g_input_inh
 
-        # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
-        new_gaba_b_rise = (
-            syn_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
-            + g_input_inh * _GABA_B_NORM
-        )
-        new_gaba_b_decay = (
-            syn_state.g_gaba_b_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
-            + g_input_inh * _GABA_B_NORM
-        )
-
-        syn_state = SynapseState(
-            g_ampa=new_g_ampa,
-            g_gaba_a=new_g_gaba_a,
-            g_nmda_rise=new_nmda_rise,
-            g_nmda_decay=new_nmda_decay,
-            g_gaba_b_rise=new_gaba_b_rise,
-            g_gaba_b_decay=new_gaba_b_decay,
-        )
-
-        # 6. STDP (optional)
-        if has_plasticity and stdp_params is not None:
-            stdp_state, W_exc = stdp_update(
-                stdp_state, stdp_params, neuron_state.spikes,
-                W_exc, is_excitatory, dt,
+            # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
+            new_nmda_rise = (
+                syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
+                + g_input_exc * _NMDA_NORM
+            )
+            new_nmda_decay = (
+                syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
+                + g_input_exc * _NMDA_NORM
             )
 
-        new_carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf)
-        return new_carry, neuron_state.spikes
+            # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
+            new_gaba_b_rise = (
+                syn_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
+                + g_input_inh * _GABA_B_NORM
+            )
+            new_gaba_b_decay = (
+                syn_state.g_gaba_b_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
+                + g_input_inh * _GABA_B_NORM
+            )
+
+            syn_state = SynapseState(
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            # 7. STDP (optional)
+            if has_plasticity and stdp_params is not None:
+                stdp_state, W_exc = stdp_update(
+                    stdp_state, stdp_params, neuron_state.spikes,
+                    W_exc, is_excitatory, dt,
+                )
+
+            new_carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf, stp_st)
+            return new_carry, neuron_state.spikes
+    else:
+        def step_fn(carry, I_ext_t):
+            neuron_state, syn_state, stdp_state, W_exc, delay_buf = carry
+
+            # 1. Synaptic current
+            I_syn = compute_synaptic_current(syn_state, neuron_state.v)
+
+            # 2. Total input
+            I_total = I_syn + I_ext_t
+
+            # 3. Neuron update
+            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+
+            # 4. Write new spikes into delay buffer
+            spikes_f = neuron_state.spikes.astype(jnp.float32)
+            delay_buf = delay_buffer_step(delay_buf, spikes_f)
+
+            # 5. Read delayed synaptic input
+            g_input_exc = read_delayed_spikes(delay_buf, W_exc_delays, W_exc)
+            g_input_inh = read_delayed_spikes(delay_buf, W_inh_delays, W_inh)
+
+            # Phase 1: AMPA & GABA_A (single-exponential decay + delayed input)
+            new_g_ampa = syn_state.g_ampa * jnp.exp(-dt / TAU_AMPA) + g_input_exc
+            new_g_gaba_a = syn_state.g_gaba_a * jnp.exp(-dt / TAU_GABA_A) + g_input_inh
+
+            # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
+            new_nmda_rise = (
+                syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
+                + g_input_exc * _NMDA_NORM
+            )
+            new_nmda_decay = (
+                syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
+                + g_input_exc * _NMDA_NORM
+            )
+
+            # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
+            new_gaba_b_rise = (
+                syn_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
+                + g_input_inh * _GABA_B_NORM
+            )
+            new_gaba_b_decay = (
+                syn_state.g_gaba_b_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
+                + g_input_inh * _GABA_B_NORM
+            )
+
+            syn_state = SynapseState(
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
+            )
+
+            # 6. STDP (optional)
+            if has_plasticity and stdp_params is not None:
+                stdp_state, W_exc = stdp_update(
+                    stdp_state, stdp_params, neuron_state.spikes,
+                    W_exc, is_excitatory, dt,
+                )
+
+            new_carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf)
+            return new_carry, neuron_state.spikes
 
     return step_fn
 
@@ -271,6 +399,7 @@ class ClosedLoop:
         motor_regions: dict[str, list[int]],
         game,
         stdp_params: STDPParams | None = None,
+        stp_params: STPParams | None = None,
     ) -> None:
         """Initialise the closed-loop controller.
 
@@ -293,6 +422,9 @@ class ClosedLoop:
         stdp_params : STDPParams or None
             STDP hyperparameters.  Pass ``None`` to disable online
             plasticity during the experiment.
+        stp_params : STPParams or None
+            Tsodyks-Markram short-term plasticity parameters.  Pass
+            ``None`` to disable STP (default).
         """
         self.network_params = network_params
         self.neuron_params = neuron_params
@@ -301,6 +433,7 @@ class ClosedLoop:
         self.motor_regions = motor_regions
         self.game = game
         self.stdp_params = stdp_params
+        self.stp_params = stp_params
 
     def run(
         self,
@@ -379,6 +512,11 @@ class ClosedLoop:
         has_plasticity = self.stdp_params is not None
         stdp_state = init_stdp_state(n_neurons)
 
+        # --- STP state ---
+        use_stp = self.stp_params is not None
+        if use_stp:
+            stp_state_cl = init_stp_state(n_neurons, self.stp_params)
+
         # --- Determine whether to use axonal delays -------------------------
         delays_raw = getattr(self.network_params, "delays", None)
         use_delays = delays_raw is not None and int(jnp.max(delays_to_dense(delays_raw))) > 0
@@ -399,6 +537,7 @@ class ClosedLoop:
             scan_step = _make_scan_step_delayed(
                 self.neuron_params, W_inh, W_exc_delays, W_inh_delays,
                 dt_ms, has_plasticity, self.stdp_params, is_excitatory,
+                stp_params=self.stp_params,
             )
             logger.info(
                 "  Using axonal conduction delays (max_delay=%d steps)",
@@ -409,6 +548,7 @@ class ClosedLoop:
             scan_step = _make_scan_step(
                 self.neuron_params, W_inh, dt_ms,
                 has_plasticity, self.stdp_params, is_excitatory,
+                stp_params=self.stp_params,
             )
 
         # --- Recording buffers ---
@@ -481,10 +621,18 @@ class ClosedLoop:
             I_external = I_external.at[0].add(feedback_current)
 
             # 6. Inner simulation (jax.lax.scan)
-            if use_delays:
+            if use_delays and use_stp:
+                carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf, stp_state_cl)
+                carry, spikes_block = jax.lax.scan(scan_step, carry, I_external)
+                neuron_state, syn_state, stdp_state, W_exc, delay_buf, stp_state_cl = carry
+            elif use_delays:
                 carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf)
                 carry, spikes_block = jax.lax.scan(scan_step, carry, I_external)
                 neuron_state, syn_state, stdp_state, W_exc, delay_buf = carry
+            elif use_stp:
+                carry = (neuron_state, syn_state, stdp_state, W_exc, stp_state_cl)
+                carry, spikes_block = jax.lax.scan(scan_step, carry, I_external)
+                neuron_state, syn_state, stdp_state, W_exc, stp_state_cl = carry
             else:
                 carry = (neuron_state, syn_state, stdp_state, W_exc)
                 carry, spikes_block = jax.lax.scan(scan_step, carry, I_external)
