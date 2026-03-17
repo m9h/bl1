@@ -9,6 +9,10 @@
 - **pharmacology** -- Drug effect modelling (TTX, Carbamazepine, Bicuculline,
   APV, CNQX) via conductance and weight scaling.
 - **sensitivity** -- Parameter sensitivity analysis, sweeps, and fitting.
+- **connectivity** -- Functional connectivity inference from spike trains
+  (cross-correlation, transfer entropy, small-world/rich-club analysis).
+- **information** -- Information-theoretic metrics (active information
+  storage, mutual information, integration, complexity).
 """
 
 from bl1.analysis.criticality import branching_ratio, avalanche_size_distribution

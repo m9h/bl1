@@ -20,15 +20,10 @@ import jax.numpy as jnp
 from jax import Array
 import numpy as np
 
-from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, izhikevich_step_surrogate
+from bl1.core.izhikevich import IzhikevichParams, NeuronState
 from bl1.core.surrogate import superspike_threshold
-from bl1.core.synapses import (
-    SynapseState,
-    create_synapse_state,
-    ampa_step,
-    gaba_a_step,
-    compute_synaptic_current,
-)
+from bl1.core.synapses import SynapseState, create_synapse_state
+from bl1.core.integrator import simulate
 
 
 def parameter_sensitivity(
@@ -51,6 +46,10 @@ def parameter_sensitivity(
     the hard threshold ``v >= V_PEAK`` had zero gradient almost everywhere,
     making ``jax.grad`` of spike-count metrics useless.
 
+    Internally delegates to :func:`bl1.core.integrator.simulate` with
+    ``surrogate=True``, so the full synapse model is included in the
+    differentiable forward pass.
+
     Args:
         metric_fn: A function (spike_history) -> scalar that computes the metric
             to differentiate. Must be JAX-compatible (no Python control flow on
@@ -59,7 +58,8 @@ def parameter_sensitivity(
         state: Initial NeuronState.
         I_external: (n_steps, N) external current array.
         dt: Timestep in ms.
-        n_steps: Number of simulation steps.
+        n_steps: Number of simulation steps (unused when I_external is provided
+            with the correct leading dimension; kept for API compatibility).
         surrogate_fn: Surrogate gradient function from ``bl1.core.surrogate``.
             Defaults to ``superspike_threshold``.  Pass ``None`` explicitly and
             set ``beta`` to 0 to disable (not recommended).
@@ -80,26 +80,24 @@ def parameter_sensitivity(
     if surrogate_fn is None:
         surrogate_fn = superspike_threshold
 
-    # Ensure initial state has float32 spikes to match surrogate step output
-    init_state = NeuronState(
-        v=state.v,
-        u=state.u,
-        spikes=state.spikes.astype(jnp.float32),
-    )
+    N = state.v.shape[0]
+    syn_state = create_synapse_state(N)
+
+    # Zero weight matrices: parameter_sensitivity traditionally measures
+    # sensitivity of isolated neurons to their parameters (no recurrence).
+    W_exc = jnp.zeros((N, N), dtype=jnp.float32)
+    W_inh = jnp.zeros((N, N), dtype=jnp.float32)
 
     def simulate_and_measure(params):
         """Inner function that runs simulation and computes metric."""
-
-        def scan_fn(carry, I_t):
-            s = carry
-            s = izhikevich_step_surrogate(
-                s, params, I_t, dt,
-                surrogate_fn=surrogate_fn, beta=beta,
-            )
-            return s, s.spikes
-
-        _, spike_history = jax.lax.scan(scan_fn, init_state, I_external)
-        return metric_fn(spike_history)
+        result = simulate(
+            params, state, syn_state, None,
+            W_exc, W_inh, I_external, dt=dt,
+            surrogate=True,
+            surrogate_fn=surrogate_fn,
+            surrogate_beta=beta,
+        )
+        return metric_fn(result.spike_history)
 
     return jax.grad(simulate_and_measure)(params)
 
@@ -167,7 +165,8 @@ def fit_parameters(
     to the specified parameters.
 
     Uses surrogate gradients by default so that spike-count-based metrics
-    produce useful gradients.
+    produce useful gradients.  Internally delegates to
+    :func:`bl1.core.integrator.simulate` with ``surrogate=True``.
 
     Args:
         target_metric: Target value for the metric
@@ -188,24 +187,20 @@ def fit_parameters(
     if surrogate_fn is None:
         surrogate_fn = superspike_threshold
 
-    # Ensure initial state has float32 spikes to match surrogate step output
-    init_state = NeuronState(
-        v=state.v,
-        u=state.u,
-        spikes=state.spikes.astype(jnp.float32),
-    )
+    N = state.v.shape[0]
+    syn_state = create_synapse_state(N)
+    W_exc = jnp.zeros((N, N), dtype=jnp.float32)
+    W_inh = jnp.zeros((N, N), dtype=jnp.float32)
 
     def loss_fn(params):
-        def scan_fn(carry, I_t):
-            s = carry
-            s = izhikevich_step_surrogate(
-                s, params, I_t, dt,
-                surrogate_fn=surrogate_fn, beta=beta,
-            )
-            return s, s.spikes
-
-        _, spike_history = jax.lax.scan(scan_fn, init_state, I_external)
-        metric = metric_fn(spike_history)
+        result = simulate(
+            params, state, syn_state, None,
+            W_exc, W_inh, I_external, dt=dt,
+            surrogate=True,
+            surrogate_fn=surrogate_fn,
+            surrogate_beta=beta,
+        )
+        metric = metric_fn(result.spike_history)
         return (metric - target_metric) ** 2
 
     grad_fn = jax.jit(jax.grad(loss_fn))

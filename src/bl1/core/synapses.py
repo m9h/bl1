@@ -288,7 +288,6 @@ def compute_synaptic_current(syn_state: SynapseState, v: Array) -> Array:
 # Fast sparse path — uses segment_sum instead of BCOO matmul
 # ---------------------------------------------------------------------------
 
-@jax.jit
 def ampa_step_fast(
     g: Array,
     spikes: Array,
@@ -304,7 +303,6 @@ def ampa_step_fast(
     return g * decay + g_input
 
 
-@jax.jit
 def gaba_a_step_fast(
     g: Array,
     spikes: Array,
@@ -320,7 +318,6 @@ def gaba_a_step_fast(
     return g * decay + g_input
 
 
-@jax.jit
 def nmda_step_fast(
     g_rise: Array,
     g_decay: Array,
@@ -341,7 +338,6 @@ def nmda_step_fast(
     return new_rise, new_decay, g_nmda
 
 
-@jax.jit
 def gaba_b_step_fast(
     g_rise: Array,
     g_decay: Array,

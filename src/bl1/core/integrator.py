@@ -32,7 +32,8 @@ from bl1.core.delays import (
     init_delay_buffer,
     read_delayed_spikes,
 )
-from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step
+from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, izhikevich_step_surrogate
+from bl1.core.surrogate import superspike_threshold
 from bl1.core.sparse_ops import RawSparseWeights, bcoo_to_raw, fast_sparse_input
 from bl1.core.synapses import (
     SynapseState,
@@ -85,6 +86,9 @@ def simulate(
     W_inh_delays: Array | None = None,
     stp_params: STPParams | None = None,
     use_fast_sparse: bool = False,
+    surrogate: bool = False,
+    surrogate_fn=None,
+    surrogate_beta: float = 10.0,
 ) -> SimulationResult:
     """Run the full simulation for T timesteps.
 
@@ -124,14 +128,61 @@ def simulate(
             Requires that ``W_exc`` and ``W_inh`` are BCOO arrays.
             Currently only supported on the no-delays path.
             Default ``False``.
+        surrogate: When ``True``, use :func:`izhikevich_step_surrogate`
+            instead of the hard-threshold :func:`izhikevich_step`.  This
+            makes the full simulation differentiable via surrogate
+            gradients (``jax.grad`` of spike-count metrics will produce
+            non-zero gradients).  The initial state's ``spikes`` field
+            is automatically cast to float32 for scan carry compatibility.
+
+            .. note:: Surrogate mode is currently only supported on the
+               no-delay, non-fast-sparse path.  Passing ``surrogate=True``
+               together with delay matrices or ``use_fast_sparse=True``
+               will raise :class:`ValueError`.
+
+            Default ``False``.
+        surrogate_fn: Surrogate gradient function from
+            :mod:`bl1.core.surrogate` (e.g. ``superspike_threshold``).
+            Only used when ``surrogate=True``.  Defaults to
+            :func:`superspike_threshold` when ``None``.
+        surrogate_beta: Sharpness parameter passed to the surrogate
+            function.  Higher values approximate the true (hard) threshold
+            more closely but produce noisier gradients.  Default 10.0.
 
     Returns:
         A ``SimulationResult`` namedtuple containing final states and the
-        full (T, N) boolean spike history.
+        full (T, N) spike history.  When ``surrogate=True`` the spike
+        history dtype is float32 (values 0.0/1.0) instead of bool.
     """
     # Decide at Python level whether to use the delay path.
     # This is a compile-time constant so it does not cause tracing issues.
     use_delays = (W_exc_delays is not None) or (W_inh_delays is not None)
+
+    # Validate surrogate constraints
+    if surrogate and use_delays:
+        raise ValueError(
+            "surrogate=True is not yet supported with axonal delays. "
+            "Use the no-delay path for differentiable simulation."
+        )
+    if surrogate and use_fast_sparse:
+        raise ValueError(
+            "surrogate=True is not yet supported with use_fast_sparse=True. "
+            "Use the standard no-delay path for differentiable simulation."
+        )
+
+    # Resolve default surrogate function
+    if surrogate and surrogate_fn is None:
+        surrogate_fn = superspike_threshold
+
+    # When using surrogate, cast init_state.spikes to float32 so the
+    # scan carry pytree is consistent (izhikevich_step_surrogate returns
+    # float32 spikes).
+    if surrogate:
+        init_state = NeuronState(
+            v=init_state.v,
+            u=init_state.u,
+            spikes=init_state.spikes.astype(jnp.float32),
+        )
 
     if use_delays:
         # Compute max_delay BEFORE tracing (must be a concrete Python int)
@@ -157,6 +208,9 @@ def simulate(
             params, init_state, syn_state, stdp_state,
             W_exc, W_inh, I_external, dt, plasticity_fn,
             stp_params,
+            surrogate=surrogate,
+            surrogate_fn=surrogate_fn,
+            surrogate_beta=surrogate_beta,
         )
 
 
@@ -168,6 +222,9 @@ def _simulate_no_delays(
     params, init_state, syn_state, stdp_state,
     W_exc, W_inh, I_external, dt, plasticity_fn,
     stp_params=None,
+    surrogate=False,
+    surrogate_fn=None,
+    surrogate_beta=10.0,
 ) -> SimulationResult:
     """Simulation loop without axonal delays (original behaviour).
 
@@ -176,8 +233,25 @@ def _simulate_no_delays(
     updates.  The STP ``scale`` vector replaces raw ``spikes_f`` in
     synapse step calls -- it already incorporates the spike indicator
     (zero for non-spiking neurons) and the per-neuron STP modulation.
+
+    When *surrogate* is True, uses :func:`izhikevich_step_surrogate`
+    for the neuron update, making the simulation differentiable via
+    surrogate gradients.
     """
     use_stp = stp_params is not None
+    use_surrogate = surrogate
+
+    # Helper: choose the appropriate neuron step function.
+    # This is a Python-level ``if`` so it creates a separate scan body
+    # closure, keeping the pytree structure consistent within each path.
+    def _neuron_step(neuron_state, I_total):
+        if use_surrogate:
+            return izhikevich_step_surrogate(
+                neuron_state, params, I_total, dt,
+                surrogate_fn=surrogate_fn, beta=surrogate_beta,
+            )
+        else:
+            return izhikevich_step(neuron_state, params, I_total, dt)
 
     if use_stp:
         N = init_state.v.shape[0]
@@ -193,7 +267,7 @@ def _simulate_no_delays(
             I_total = I_syn + I_t
 
             # 3. Izhikevich neuron update
-            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+            neuron_state = _neuron_step(neuron_state, I_total)
 
             # 4. STP modulation: scale already includes spike indicator
             stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
@@ -244,7 +318,7 @@ def _simulate_no_delays(
             I_total = I_syn + I_t
 
             # 3. Izhikevich neuron update
-            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+            neuron_state = _neuron_step(neuron_state, I_total)
 
             # 4. Synapse conductance updates driven by new spikes
             spikes_f = neuron_state.spikes.astype(jnp.float32)
@@ -677,4 +751,7 @@ def _simulate_with_delays(
 # pass ``plasticity_fn=None`` (the default) can call this directly; those
 # who supply a plasticity callback should jit the outer call themselves
 # (or rely on tracing through ``simulate`` inside their own jitted code).
-simulate_jit = jax.jit(simulate, static_argnames=("dt", "plasticity_fn", "use_fast_sparse"))
+simulate_jit = jax.jit(simulate, static_argnames=(
+    "dt", "plasticity_fn", "use_fast_sparse",
+    "surrogate", "surrogate_fn", "surrogate_beta",
+))
