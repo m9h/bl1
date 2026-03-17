@@ -180,3 +180,64 @@ def izhikevich_step(
     u_new = jnp.where(spiked, u_new + d, u_new)
 
     return NeuronState(v=v_new, u=u_new, spikes=spiked)
+
+
+# ---------------------------------------------------------------------------
+# Differentiable surrogate-gradient variant
+# ---------------------------------------------------------------------------
+
+def izhikevich_step_surrogate(
+    state: NeuronState,
+    params: IzhikevichParams,
+    I_ext: Array,
+    dt: float = 0.5,
+    surrogate_fn=None,
+    beta: float = 10.0,
+) -> NeuronState:
+    """Advance Izhikevich neurons by one timestep with surrogate gradients.
+
+    The forward pass produces identical binary spikes to :func:`izhikevich_step`.
+    The backward pass uses a smooth surrogate gradient through the spike
+    threshold, enabling ``jax.grad`` of spike-count-based metrics.
+
+    The reset is also made differentiable: instead of ``jnp.where(spiked, c, v)``
+    (zero gradient through the boolean condition), it uses the soft form
+    ``v * (1 - spike_f) + c * spike_f`` where ``spike_f`` is a float
+    produced by the surrogate threshold.
+
+    Args:
+        state: Current NeuronState (v, u, spikes).
+        params: IzhikevichParams (a, b, c, d).
+        I_ext: External input current, shape (N,).
+        dt: Integration timestep in ms (default 0.5).
+        surrogate_fn: A surrogate threshold function from ``bl1.core.surrogate``
+            (e.g. ``superspike_threshold``).  If None, falls back to a hard
+            threshold (non-differentiable).
+        beta: Sharpness parameter passed to the surrogate function.
+
+    Returns:
+        Updated NeuronState with new v, u, and spike indicators.
+    """
+    v, u = state.v, state.u
+    a, b, c, d = params.a, params.b, params.c, params.d
+
+    # Voltage update (semi-implicit Euler)
+    v_new = v + dt * (0.04 * v * v + 5.0 * v + 140.0 - u + I_ext)
+
+    # Recovery variable update
+    u_new = u + dt * a * (b * v - u)
+
+    # Spike detection via surrogate
+    if surrogate_fn is not None:
+        spiked_f = surrogate_fn(v_new, V_PEAK, beta)
+    else:
+        spiked_f = (v_new >= V_PEAK).astype(jnp.float32)
+
+    # Soft reset (differentiable)
+    v_new = v_new * (1.0 - spiked_f) + c * spiked_f
+    u_new = u_new + d * spiked_f
+
+    # Store float spikes (0.0/1.0) to preserve gradient chain.
+    # The forward values are still binary, but the surrogate gradient
+    # flows through spiked_f when differentiated.
+    return NeuronState(v=v_new, u=u_new, spikes=spiked_f)

@@ -181,6 +181,9 @@ def test_fit_parameters_reduces_loss():
     # Set target slightly different from actual so there is something to optimize
     target = actual_rate + 5.0
 
+    # Use a very small learning rate — surrogate gradients produce large
+    # non-zero gradients through spike thresholds (|da/d_rate| ~ 2000),
+    # so the step size must be small enough to avoid divergence.
     opt_params, loss_history = fit_parameters(
         target_metric=target,
         metric_fn=lambda s: mean_firing_rate(s, dt_ms=0.5),
@@ -188,7 +191,7 @@ def test_fit_parameters_reduces_loss():
         state=state,
         I_external=I_ext,
         param_names=["a"],
-        learning_rate=0.001,
+        learning_rate=1e-8,
         n_iterations=10,
         dt=0.5,
     )

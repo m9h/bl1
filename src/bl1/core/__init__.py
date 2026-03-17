@@ -8,8 +8,19 @@ All state containers are JAX-compatible NamedTuples and all step functions
 are vectorised over the neuron population.
 """
 
-from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, create_population
-from bl1.core.adex import AdExParams, AdExState, adex_step, create_adex_population
+from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, izhikevich_step_surrogate, create_population
+from bl1.core.adex import AdExParams, AdExState, adex_step, adex_step_surrogate, create_adex_population
+from bl1.core.surrogate import (
+    superspike_threshold,
+    sigmoid_threshold,
+    fast_sigmoid_threshold,
+    arctan_threshold,
+)
+from bl1.core.regularization import (
+    firing_rate_penalty,
+    sparsity_penalty,
+    silence_penalty,
+)
 from bl1.core.synapses import (
     SynapseState,
     ampa_step,
@@ -52,11 +63,20 @@ __all__ = [
     "IzhikevichParams",
     "NeuronState",
     "izhikevich_step",
+    "izhikevich_step_surrogate",
     "create_population",
     "AdExParams",
     "AdExState",
     "adex_step",
+    "adex_step_surrogate",
     "create_adex_population",
+    "superspike_threshold",
+    "sigmoid_threshold",
+    "fast_sigmoid_threshold",
+    "arctan_threshold",
+    "firing_rate_penalty",
+    "sparsity_penalty",
+    "silence_penalty",
     "SynapseState",
     "ampa_step",
     "gaba_a_step",

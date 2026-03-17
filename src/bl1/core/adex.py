@@ -220,3 +220,70 @@ def adex_step(
     w_new = jnp.where(spiked, w_new + b, w_new)
 
     return AdExState(v=v_new, w=w_new, spikes=spiked)
+
+
+# ---------------------------------------------------------------------------
+# Differentiable surrogate-gradient variant
+# ---------------------------------------------------------------------------
+
+def adex_step_surrogate(
+    state: AdExState,
+    params: AdExParams,
+    I_ext: Array,
+    dt: float = 0.5,
+    surrogate_fn=None,
+    beta: float = 10.0,
+) -> AdExState:
+    """Advance AdEx neurons by one timestep with surrogate gradients.
+
+    The forward pass produces identical binary spikes to :func:`adex_step`.
+    The backward pass uses a smooth surrogate gradient through the spike
+    threshold, enabling ``jax.grad`` of spike-count-based metrics.
+
+    The reset is also made differentiable: instead of ``jnp.where(spiked, ...)``
+    (zero gradient through the boolean condition), it uses the soft form
+    ``v * (1 - spike_f) + V_reset * spike_f``.
+
+    Args:
+        state: Current AdExState (v, w, spikes).
+        params: AdExParams (C, g_L, E_L, delta_T, V_T, V_reset, V_peak,
+                a, b, tau_w).
+        I_ext: External input current in pA, shape (N,).
+        dt: Integration timestep in ms (default 0.5).
+        surrogate_fn: A surrogate threshold function from ``bl1.core.surrogate``
+            (e.g. ``superspike_threshold``).  If None, falls back to a hard
+            threshold (non-differentiable).
+        beta: Sharpness parameter passed to the surrogate function.
+
+    Returns:
+        Updated AdExState with new v, w, and spike indicators.
+    """
+    v, w = state.v, state.w
+    C, g_L, E_L, delta_T, V_T, V_reset, V_peak, a, b, tau_w = params
+
+    # Exponential term (clipped for numerical stability)
+    exp_arg = jnp.clip((v - V_T) / delta_T, -20.0, 20.0)
+    exp_term = g_L * delta_T * jnp.exp(exp_arg)
+
+    # Voltage update
+    dv = (-g_L * (v - E_L) + exp_term - w + I_ext) / C
+    v_new = v + dt * dv
+
+    # Adaptation current update
+    dw = (a * (v - E_L) - w) / tau_w
+    w_new = w + dt * dw
+
+    # Spike detection via surrogate
+    if surrogate_fn is not None:
+        spiked_f = surrogate_fn(v_new, V_peak, beta)
+    else:
+        spiked_f = (v_new >= V_peak).astype(jnp.float32)
+
+    # Soft reset (differentiable)
+    v_new = v_new * (1.0 - spiked_f) + V_reset * spiked_f
+    w_new = w_new + b * spiked_f
+
+    # Store float spikes (0.0/1.0) to preserve gradient chain.
+    # The forward values are still binary, but the surrogate gradient
+    # flows through spiked_f when differentiated.
+    return AdExState(v=v_new, w=w_new, spikes=spiked_f)

@@ -20,7 +20,8 @@ import jax.numpy as jnp
 from jax import Array
 import numpy as np
 
-from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step
+from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, izhikevich_step_surrogate
+from bl1.core.surrogate import superspike_threshold
 from bl1.core.synapses import (
     SynapseState,
     create_synapse_state,
@@ -37,11 +38,18 @@ def parameter_sensitivity(
     I_external: Array,
     dt: float = 0.5,
     n_steps: int = 1000,
+    surrogate_fn=None,
+    beta: float = 10.0,
 ) -> Any:
     """Compute gradients of a scalar metric with respect to neuron parameters.
 
     Uses jax.grad to differentiate a simulation metric (e.g., mean firing rate,
     synchrony index) with respect to model parameters.
+
+    By default, uses the SuperSpike surrogate gradient so that spike-count-based
+    metrics (like mean firing rate) produce non-zero gradients.  Previously,
+    the hard threshold ``v >= V_PEAK`` had zero gradient almost everywhere,
+    making ``jax.grad`` of spike-count metrics useless.
 
     Args:
         metric_fn: A function (spike_history) -> scalar that computes the metric
@@ -52,6 +60,10 @@ def parameter_sensitivity(
         I_external: (n_steps, N) external current array.
         dt: Timestep in ms.
         n_steps: Number of simulation steps.
+        surrogate_fn: Surrogate gradient function from ``bl1.core.surrogate``.
+            Defaults to ``superspike_threshold``.  Pass ``None`` explicitly and
+            set ``beta`` to 0 to disable (not recommended).
+        beta: Sharpness parameter for the surrogate gradient.
 
     Returns:
         Gradient pytree with same structure as params, where each leaf
@@ -65,16 +77,28 @@ def parameter_sensitivity(
         grads = parameter_sensitivity(mean_rate, params, state, I_ext)
         # grads.a is shape (N,) --- sensitivity of rate to each neuron's 'a'
     """
+    if surrogate_fn is None:
+        surrogate_fn = superspike_threshold
+
+    # Ensure initial state has float32 spikes to match surrogate step output
+    init_state = NeuronState(
+        v=state.v,
+        u=state.u,
+        spikes=state.spikes.astype(jnp.float32),
+    )
 
     def simulate_and_measure(params):
         """Inner function that runs simulation and computes metric."""
 
         def scan_fn(carry, I_t):
             s = carry
-            s = izhikevich_step(s, params, I_t, dt)
-            return s, s.spikes.astype(jnp.float32)
+            s = izhikevich_step_surrogate(
+                s, params, I_t, dt,
+                surrogate_fn=surrogate_fn, beta=beta,
+            )
+            return s, s.spikes
 
-        _, spike_history = jax.lax.scan(scan_fn, state, I_external)
+        _, spike_history = jax.lax.scan(scan_fn, init_state, I_external)
         return metric_fn(spike_history)
 
     return jax.grad(simulate_and_measure)(params)
@@ -134,11 +158,16 @@ def fit_parameters(
     learning_rate: float = 0.01,
     n_iterations: int = 100,
     dt: float = 0.5,
+    surrogate_fn=None,
+    beta: float = 10.0,
 ) -> tuple[Any, Array]:
     """Fit parameters to match a target metric using gradient descent.
 
     Minimizes (metric_fn(simulate(params)) - target_metric)^2 with respect
     to the specified parameters.
+
+    Uses surrogate gradients by default so that spike-count-based metrics
+    produce useful gradients.
 
     Args:
         target_metric: Target value for the metric
@@ -150,18 +179,32 @@ def fit_parameters(
         learning_rate: Gradient descent step size
         n_iterations: Number of optimization steps
         dt: Simulation timestep
+        surrogate_fn: Surrogate gradient function (default: superspike_threshold)
+        beta: Sharpness parameter for surrogate gradient
 
     Returns:
         (optimized_params, loss_history) where loss_history is (n_iterations,)
     """
+    if surrogate_fn is None:
+        surrogate_fn = superspike_threshold
+
+    # Ensure initial state has float32 spikes to match surrogate step output
+    init_state = NeuronState(
+        v=state.v,
+        u=state.u,
+        spikes=state.spikes.astype(jnp.float32),
+    )
 
     def loss_fn(params):
         def scan_fn(carry, I_t):
             s = carry
-            s = izhikevich_step(s, params, I_t, dt)
-            return s, s.spikes.astype(jnp.float32)
+            s = izhikevich_step_surrogate(
+                s, params, I_t, dt,
+                surrogate_fn=surrogate_fn, beta=beta,
+            )
+            return s, s.spikes
 
-        _, spike_history = jax.lax.scan(scan_fn, state, I_external)
+        _, spike_history = jax.lax.scan(scan_fn, init_state, I_external)
         metric = metric_fn(spike_history)
         return (metric - target_metric) ** 2
 
