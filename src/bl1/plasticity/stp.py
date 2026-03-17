@@ -40,7 +40,6 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-
 # ---------------------------------------------------------------------------
 # Parameter and state containers
 # ---------------------------------------------------------------------------

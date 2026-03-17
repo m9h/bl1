@@ -37,15 +37,15 @@ from bl1.core.delays import (
 )
 from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step
 from bl1.core.synapses import (
-    SynapseState,
+    _GABA_B_NORM,
+    _NMDA_NORM,
     TAU_AMPA,
     TAU_GABA_A,
     TAU_GABA_B_DECAY,
     TAU_GABA_B_RISE,
     TAU_NMDA_DECAY,
     TAU_NMDA_RISE,
-    _GABA_B_NORM,
-    _NMDA_NORM,
+    SynapseState,
     ampa_step,
     compute_synaptic_current,
     create_synapse_state,
@@ -55,9 +55,9 @@ from bl1.core.synapses import (
 )
 from bl1.games.pong import EVENT_HIT, EVENT_MISS
 from bl1.loop.decoding import decode_motor
-from bl1.loop.encoding import STIM_AMPLITUDE_MV, encode_sensory
-from bl1.plasticity.stdp import STDPParams, STDPState, init_stdp_state, stdp_update
-from bl1.plasticity.stp import STPParams, STPState, init_stp_state, stp_step
+from bl1.loop.encoding import encode_sensory
+from bl1.plasticity.stdp import STDPParams, init_stdp_state, stdp_update
+from bl1.plasticity.stp import STPParams, init_stp_state, stp_step
 
 logger = logging.getLogger(__name__)
 

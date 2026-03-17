@@ -7,15 +7,15 @@ distributions, the standard characterisation of culture burstiness.
 
 from __future__ import annotations
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.figure import Figure
 
 from bl1.visualization._style import (
     BLUE_LIGHT,
-    RED_LIGHT,
-    GREY,
     DPI,
+    GREY,
+    RED_LIGHT,
     bl1_style,
 )
 

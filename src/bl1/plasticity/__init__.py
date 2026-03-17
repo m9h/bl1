@@ -12,16 +12,14 @@ All rules support both dense ``jnp.ndarray`` and sparse ``BCOO`` weight
 matrices except structural plasticity, which operates on dense matrices only.
 """
 
-from bl1.plasticity.stdp import STDPState, STDPParams, init_stdp_state, stdp_update
-
 from bl1.plasticity.homeostatic import (
     HomeostaticParams,
     HomeostaticState,
+    homeostatic_scaling,
     init_homeostatic_state,
     update_rate_estimate,
-    homeostatic_scaling,
 )
-
+from bl1.plasticity.stdp import STDPParams, STDPState, init_stdp_state, stdp_update
 from bl1.plasticity.stp import (
     STPParams,
     STPState,
@@ -29,7 +27,6 @@ from bl1.plasticity.stp import (
     init_stp_state,
     stp_step,
 )
-
 from bl1.plasticity.structural import (
     StructuralPlasticityParams,
     structural_update,

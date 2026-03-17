@@ -21,10 +21,10 @@ from __future__ import annotations
 import argparse
 import struct
 import time
+
 import numpy as np
 
-from bl1.compat.cl_sdk import Neurons, ChannelSet, StimDesign, BurstDesign
-
+from bl1.compat.cl_sdk import BurstDesign, ChannelSet, Neurons, StimDesign
 
 # Protocol constants (must match doom-neuron/udp_protocol.py)
 NUM_CHANNEL_SETS = 8

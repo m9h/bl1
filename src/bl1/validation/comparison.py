@@ -21,7 +21,6 @@ from numpy.typing import NDArray
 
 from bl1.validation.datasets import DATASETS, compare_statistics
 
-
 # ============================================================================
 # Comprehensive culture statistics
 # ============================================================================
@@ -79,10 +78,12 @@ def compute_culture_statistics(
         - ``fraction_active`` -- Fraction of neurons that fire at
           least once during the recording.
     """
-    from bl1.analysis.bursts import detect_bursts, burst_statistics
+    from bl1.analysis.bursts import burst_statistics, detect_bursts
+    from bl1.analysis.criticality import (
+        avalanche_size_distribution,
+    )
     from bl1.analysis.criticality import (
         branching_ratio as compute_branching_ratio,
-        avalanche_size_distribution,
     )
 
     raster = np.asarray(spike_raster, dtype=np.float32)
@@ -142,7 +143,8 @@ def compute_culture_statistics(
     # These are O(N^2) or worse, so only compute on a small subset of
     # neurons to keep runtime manageable for large networks.
     from bl1.analysis.connectivity import cross_correlation_matrix, transfer_entropy
-    from bl1.analysis.information import active_information_storage, integration as compute_integration
+    from bl1.analysis.information import active_information_storage
+    from bl1.analysis.information import integration as compute_integration
 
     _FC_SUBSET = 50
     subset_raster = raster[:, :min(N, _FC_SUBSET)]

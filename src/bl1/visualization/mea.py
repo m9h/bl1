@@ -8,10 +8,10 @@ BrainWave.
 
 from __future__ import annotations
 
-import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
+import numpy as np
 from matplotlib.colors import Normalize
+from matplotlib.figure import Figure
 
 from bl1.visualization._style import DPI, bl1_style
 
@@ -94,7 +94,7 @@ def plot_mea_heatmap(
             origin="lower",
             aspect="equal",
         )
-        cbar = fig.colorbar(im, ax=ax, shrink=0.8, label="Firing Rate (Hz)")
+        fig.colorbar(im, ax=ax, shrink=0.8, label="Firing Rate (Hz)")
 
         ax.set_xlabel("Electrode Column")
         ax.set_ylabel("Electrode Row")

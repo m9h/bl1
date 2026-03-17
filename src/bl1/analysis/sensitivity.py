@@ -13,17 +13,17 @@ Key functions:
 
 from __future__ import annotations
 
-from typing import Callable, Any
+from collections.abc import Callable
+from typing import Any
 
 import jax
 import jax.numpy as jnp
 from jax import Array
-import numpy as np
 
-from bl1.core.izhikevich import IzhikevichParams, NeuronState
-from bl1.core.surrogate import superspike_threshold
-from bl1.core.synapses import SynapseState, create_synapse_state
 from bl1.core.integrator import simulate
+from bl1.core.izhikevich import NeuronState
+from bl1.core.surrogate import superspike_threshold
+from bl1.core.synapses import create_synapse_state
 
 
 def parameter_sensitivity(

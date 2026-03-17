@@ -13,7 +13,7 @@ from bl1.mea.electrode import (
     compute_lfp,
     select_electrode_subset,
 )
-from bl1.mea.recording import detect_spikes, compute_electrode_rates
+from bl1.mea.recording import compute_electrode_rates, detect_spikes
 from bl1.mea.stimulation import apply_stimulation, generate_feedback_stim
 
 __all__ = [

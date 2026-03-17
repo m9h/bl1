@@ -20,14 +20,14 @@ Scenarios:
 
 from __future__ import annotations
 
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 import numpy as np
 
 _VIZDOOM_AVAILABLE = False
 try:
     import vizdoom
-    from vizdoom import DoomGame, Mode, Button, GameVariable
+    from vizdoom import Button, DoomGame, GameVariable, Mode
 
     _VIZDOOM_AVAILABLE = True
 except ImportError:
@@ -103,7 +103,7 @@ class Doom:
     def __init__(
         self,
         config_path: str = "progressive_deathmatch.cfg",
-        wad_path: Optional[str] = None,
+        wad_path: str | None = None,
         screen_resolution: str = "RES_320X240",
         show_window: bool = False,
         tick_frequency_hz: int = 10,
@@ -281,19 +281,7 @@ class Doom:
         available = self._game.get_available_buttons()
 
         for i, btn in enumerate(available):
-            if btn == Button.MOVE_FORWARD and action.move_forward == 1:
-                buttons[i] = 1
-            elif btn == Button.MOVE_BACKWARD and action.move_forward == 2:
-                buttons[i] = 1
-            elif btn == Button.MOVE_LEFT and action.strafe == 1:
-                buttons[i] = 1
-            elif btn == Button.MOVE_RIGHT and action.strafe == 2:
-                buttons[i] = 1
-            elif btn == Button.TURN_LEFT and action.turn == 1:
-                buttons[i] = 1
-            elif btn == Button.TURN_RIGHT and action.turn == 2:
-                buttons[i] = 1
-            elif btn == Button.ATTACK and action.attack:
+            if btn == Button.MOVE_FORWARD and action.move_forward == 1 or btn == Button.MOVE_BACKWARD and action.move_forward == 2 or btn == Button.MOVE_LEFT and action.strafe == 1 or btn == Button.MOVE_RIGHT and action.strafe == 2 or btn == Button.TURN_LEFT and action.turn == 1 or btn == Button.TURN_RIGHT and action.turn == 2 or btn == Button.ATTACK and action.attack:
                 buttons[i] = 1
 
         return buttons

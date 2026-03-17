@@ -12,7 +12,7 @@ any dimensionality thanks to ``axis=-1`` reductions.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import jax
 import jax.numpy as jnp
@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 def place_neurons(
     key: jax.Array,
     n_neurons: int,
-    substrate_um: Tuple[float, float] = (3000.0, 3000.0),
-    substrate_3d: Optional[Tuple[float, float, float]] = None,
+    substrate_um: tuple[float, float] = (3000.0, 3000.0),
+    substrate_3d: tuple[float, float, float] | None = None,
 ) -> jnp.ndarray:
     """Uniformly distribute neurons on a 2-D substrate or in a 3-D volume.
 
@@ -61,7 +61,7 @@ def place_neurons_spheroid(
     key: jax.Array,
     n_neurons: int,
     radius_um: float = 500.0,
-    center_um: Optional[Tuple[float, float, float]] = None,
+    center_um: tuple[float, float, float] | None = None,
 ) -> jnp.ndarray:
     """Place neurons uniformly within a 3-D spheroid (organoid model).
 
@@ -119,7 +119,7 @@ def place_neurons_spheroid(
 def place_neurons_layered(
     key: jax.Array,
     n_neurons: int,
-    substrate_um: Tuple[float, float] = (3000.0, 3000.0),
+    substrate_um: tuple[float, float] = (3000.0, 3000.0),
     layer_depths_um: Sequence[float] = (100.0, 200.0, 400.0, 300.0, 200.0, 100.0),
     layer_densities: Sequence[float] = (0.05, 0.15, 0.3, 0.25, 0.15, 0.1),
 ) -> jnp.ndarray:
@@ -197,7 +197,7 @@ def _build_connectivity_dense(
     g_inh: float = 0.20,
     v_axon_um_per_ms: float = 300.0,
     dt: float = 0.5,
-) -> Tuple[BCOO, BCOO, BCOO]:
+) -> tuple[BCOO, BCOO, BCOO]:
     """Build connectivity for small networks using a full distance matrix.
 
     Works transparently with (N, 2) or (N, 3) positions — the distance
@@ -265,7 +265,7 @@ def _build_connectivity_spatial(
     g_inh: float = 0.20,
     v_axon_um_per_ms: float = 300.0,
     dt: float = 0.5,
-) -> Tuple[BCOO, BCOO, BCOO]:
+) -> tuple[BCOO, BCOO, BCOO]:
     """Build connectivity for large networks via spatial binning in NumPy.
 
     Neurons are assigned to square (2D) or cubic (3D) bins of side
@@ -441,7 +441,7 @@ def _build_connectivity_spatial(
         row_parts: list[np.ndarray],
         col_parts: list[np.ndarray],
         val_parts: list[np.ndarray],
-    ) -> Tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+    ) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
         if not row_parts:
             return row_parts, col_parts, val_parts
         rows_np = np.concatenate(row_parts)
@@ -477,7 +477,7 @@ def _build_connectivity_spatial_fast(
     g_inh: float = 0.20,
     v_axon_um_per_ms: float = 300.0,
     dt: float = 0.5,
-) -> Tuple[BCOO, BCOO, BCOO]:
+) -> tuple[BCOO, BCOO, BCOO]:
     """Build connectivity for large networks using scipy KD-tree.
 
     Faster than :func:`_build_connectivity_spatial` because:
@@ -636,7 +636,7 @@ def build_connectivity(
     g_inh: float = 0.20,
     v_axon_um_per_ms: float = 300.0,
     dt: float = 0.5,
-) -> Tuple[BCOO, BCOO, BCOO]:
+) -> tuple[BCOO, BCOO, BCOO]:
     """Build distance-dependent connectivity for a cortical culture.
 
     Dispatches to a dense implementation for small networks (N < 10 000) and

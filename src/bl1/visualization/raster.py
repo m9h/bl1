@@ -8,16 +8,16 @@ used in cortical-culture MEA literature (Wagenaar et al. 2006).
 
 from __future__ import annotations
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.figure import Figure
 
 from bl1.visualization._style import (
-    BLUE_E,
-    RED_I,
-    BLUE_LIGHT,
     BLACK,
+    BLUE_E,
+    BLUE_LIGHT,
     DPI,
+    RED_I,
     bl1_style,
 )
 
@@ -64,7 +64,7 @@ def plot_raster(
         time_offset = 0.0
 
     # -- neuron subsampling --------------------------------------------------
-    if N > neuron_subset:
+    if neuron_subset < N:
         idx = np.sort(np.random.choice(N, neuron_subset, replace=False))
         raster_sub = raster[:, idx]
         # Remap ei_boundary to subsampled indices
@@ -166,7 +166,7 @@ def plot_raster_with_rate(
         )
 
         # -- raster panel ----------------------------------------------------
-        if N > neuron_subset:
+        if neuron_subset < N:
             idx = np.sort(np.random.choice(N, neuron_subset, replace=False))
             raster_sub = raster[:, idx]
         else:

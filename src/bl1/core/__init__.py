@@ -8,35 +8,40 @@ All state containers are JAX-compatible NamedTuples and all step functions
 are vectorised over the neuron population.
 """
 
-from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, izhikevich_step_surrogate, create_population
-from bl1.core.adex import AdExParams, AdExState, adex_step, adex_step_surrogate, create_adex_population
-from bl1.core.surrogate import (
-    superspike_threshold,
-    sigmoid_threshold,
-    fast_sigmoid_threshold,
-    arctan_threshold,
+from bl1.core.adex import (
+    AdExParams,
+    AdExState,
+    adex_step,
+    adex_step_surrogate,
+    create_adex_population,
 )
-from bl1.core.regularization import (
-    firing_rate_penalty,
-    sparsity_penalty,
-    silence_penalty,
+from bl1.core.delays import (
+    DelayBufferState,
+    compute_max_delay,
+    delay_buffer_step,
+    delays_to_dense,
+    init_delay_buffer,
+    read_delayed_spikes,
 )
-from bl1.core.synapses import (
-    SynapseState,
-    ampa_step,
-    gaba_a_step,
-    nmda_step,
-    nmda_mg_block,
-    gaba_b_step,
-    compute_synaptic_current,
-    create_synapse_state,
+from bl1.core.hybrid import (
+    HybridParams,
+    HybridPopulation,
+    HybridState,
+    hybrid_step,
 )
-from bl1.core.integrator import simulate, simulate_jit, SimulationResult
-from bl1.core.sparse_ops import (
-    RawSparseWeights,
-    bcoo_to_raw,
-    fast_sparse_input,
-    fast_sparse_input_raw,
+from bl1.core.integrator import SimulationResult, simulate, simulate_jit
+from bl1.core.izhikevich import (
+    IzhikevichParams,
+    NeuronState,
+    create_population,
+    izhikevich_step,
+    izhikevich_step_surrogate,
+)
+from bl1.core.jaxley_adapter import (
+    JaxleyConfig,
+    JaxleyNetwork,
+    JaxleyState,
+    is_jaxley_available,
 )
 from bl1.core.pallas_ops import (
     CSCWeights,
@@ -45,25 +50,32 @@ from bl1.core.pallas_ops import (
     event_driven_input,
     is_pallas_available,
 )
-from bl1.core.delays import (
-    DelayBufferState,
-    init_delay_buffer,
-    delay_buffer_step,
-    read_delayed_spikes,
-    compute_max_delay,
-    delays_to_dense,
+from bl1.core.regularization import (
+    firing_rate_penalty,
+    silence_penalty,
+    sparsity_penalty,
 )
-from bl1.core.jaxley_adapter import (
-    is_jaxley_available,
-    JaxleyConfig,
-    JaxleyNetwork,
-    JaxleyState,
+from bl1.core.sparse_ops import (
+    RawSparseWeights,
+    bcoo_to_raw,
+    fast_sparse_input,
+    fast_sparse_input_raw,
 )
-from bl1.core.hybrid import (
-    HybridPopulation,
-    HybridParams,
-    HybridState,
-    hybrid_step,
+from bl1.core.surrogate import (
+    arctan_threshold,
+    fast_sigmoid_threshold,
+    sigmoid_threshold,
+    superspike_threshold,
+)
+from bl1.core.synapses import (
+    SynapseState,
+    ampa_step,
+    compute_synaptic_current,
+    create_synapse_state,
+    gaba_a_step,
+    gaba_b_step,
+    nmda_mg_block,
+    nmda_step,
 )
 
 __all__ = [

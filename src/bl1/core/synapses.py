@@ -30,8 +30,8 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from bl1.core.sparse_ops import fast_sparse_input
 from bl1.core.pallas_ops import CSCWeights, event_driven_input
+from bl1.core.sparse_ops import fast_sparse_input
 
 # ---------------------------------------------------------------------------
 # Biophysical constants -- Phase 1 (AMPA, GABA_A)

@@ -6,15 +6,15 @@ simulated cultures against experimental MEA recordings.
 
 from __future__ import annotations
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.figure import Figure
 from scipy.ndimage import gaussian_filter1d
 
 from bl1.visualization._style import (
     BLUE_LIGHT,
-    GREY,
     DPI,
+    GREY,
     bl1_style,
 )
 

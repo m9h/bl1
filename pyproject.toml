@@ -22,8 +22,17 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    "pytest-cov>=4.0",
     "hypothesis>=6.0",
     "ipykernel>=6.0",
+]
+quality = [
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "vulture>=2.11",
+    "radon>=6.0",
+    "bandit>=1.7",
+    "interrogate>=1.5",
 ]
 jaxley = [
     "jaxley>=0.3.0",
@@ -34,3 +43,58 @@ packages = ["src/bl1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: marks tests as slow (deselect with '-m \"not slow\"')"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "UP", "SIM", "C90", "I", "W"]
+ignore = [
+    "E501",    # line too long — handled by formatter
+    "SIM108",  # ternary operator — readability preference
+    "UP007",   # X | Y union syntax — need 3.10+ only
+    "B905",    # zip strict — not always needed
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "SIM"]
+"notebooks/*" = ["E", "F", "B"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+exclude = ["notebooks/", "benchmarks/", "scripts/"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/bl1"]
+
+[tool.coverage.report]
+fail_under = 50
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if _VIZDOOM_AVAILABLE",
+    "if _JAXLEY_AVAILABLE",
+    "if _PALLAS_AVAILABLE",
+    "raise ImportError",
+    "raise NotImplementedError",
+]
+
+[tool.interrogate]
+ignore-init-module = true
+ignore-init-method = true
+ignore-magic = true
+ignore-private = true
+fail-under = 60
+exclude = ["tests", "notebooks", "benchmarks", "scripts"]
+
+[tool.vulture]
+min_confidence = 80
+exclude = ["tests/", "notebooks/", "benchmarks/", "scripts/"]

@@ -34,9 +34,9 @@ Quick start
     game = Pong()
 """
 
-from bl1.network.types import Culture, CultureState, NetworkParams
-from bl1.mea.electrode import MEA
-from bl1.loop.controller import ClosedLoop
 from bl1.games.pong import Pong
+from bl1.loop.controller import ClosedLoop
+from bl1.mea.electrode import MEA
+from bl1.network.types import Culture, CultureState, NetworkParams
 
 __all__ = ["Culture", "CultureState", "NetworkParams", "MEA", "ClosedLoop", "Pong"]

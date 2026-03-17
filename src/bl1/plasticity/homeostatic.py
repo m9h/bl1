@@ -38,7 +38,6 @@ import jax.numpy as jnp
 from jax import Array
 from jax.experimental.sparse import BCOO
 
-
 # ---------------------------------------------------------------------------
 # Parameter and state containers
 # ---------------------------------------------------------------------------

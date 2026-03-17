@@ -19,33 +19,38 @@ before they drive conductance updates.  This enables synaptic depression
 
 from __future__ import annotations
 
-from typing import Any, Callable, NamedTuple
+from collections.abc import Callable
+from typing import Any, NamedTuple
 
 import jax
 import jax.numpy as jnp
 from jax import Array
 
 from bl1.core.delays import (
-    DelayBufferState,
     compute_max_delay,
     delay_buffer_step,
     init_delay_buffer,
     read_delayed_spikes,
 )
-from bl1.core.izhikevich import IzhikevichParams, NeuronState, izhikevich_step, izhikevich_step_surrogate
+from bl1.core.izhikevich import (
+    IzhikevichParams,
+    NeuronState,
+    izhikevich_step,
+    izhikevich_step_surrogate,
+)
+from bl1.core.pallas_ops import bcoo_to_csc
+from bl1.core.sparse_ops import bcoo_to_raw
 from bl1.core.surrogate import superspike_threshold
-from bl1.core.sparse_ops import RawSparseWeights, bcoo_to_raw, fast_sparse_input
-from bl1.core.pallas_ops import CSCWeights, bcoo_to_csc
 from bl1.core.synapses import (
-    SynapseState,
+    _GABA_B_NORM,
+    _NMDA_NORM,
     TAU_AMPA,
     TAU_GABA_A,
     TAU_GABA_B_DECAY,
     TAU_GABA_B_RISE,
     TAU_NMDA_DECAY,
     TAU_NMDA_RISE,
-    _GABA_B_NORM,
-    _NMDA_NORM,
+    SynapseState,
     ampa_step,
     ampa_step_event,
     ampa_step_fast,
@@ -60,8 +65,7 @@ from bl1.core.synapses import (
     nmda_step_event,
     nmda_step_fast,
 )
-from bl1.plasticity.stp import STPParams, STPState, init_stp_state, stp_step
-
+from bl1.plasticity.stp import STPParams, init_stp_state, stp_step
 
 # Type alias for the optional plasticity callback.
 # Signature: (stdp_state, spikes, W_exc) -> (stdp_state, W_exc)

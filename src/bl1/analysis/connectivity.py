@@ -23,7 +23,6 @@ from collections import deque
 import numpy as np
 from numpy.typing import NDArray
 
-
 # ---------------------------------------------------------------------------
 # Spike binning (neuron-resolved)
 # ---------------------------------------------------------------------------

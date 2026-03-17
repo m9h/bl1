@@ -27,10 +27,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax
-import jax.numpy as jnp
 from jax import Array
 from jax.experimental.sparse import BCOO
-
 
 # ---------------------------------------------------------------------------
 # Raw weight arrays container

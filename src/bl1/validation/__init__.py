@@ -11,15 +11,15 @@ Submodules
   rasters and compare them against published dataset ranges.
 """
 
-from bl1.validation.datasets import (
-    DatasetInfo,
-    DATASETS,
-    list_datasets,
-    compare_statistics,
-)
 from bl1.validation.comparison import (
     compute_culture_statistics,
     generate_comparison_report,
+)
+from bl1.validation.datasets import (
+    DATASETS,
+    DatasetInfo,
+    compare_statistics,
+    list_datasets,
 )
 
 __all__ = [

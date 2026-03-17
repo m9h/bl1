@@ -15,40 +15,40 @@
   storage, mutual information, integration, complexity).
 """
 
-from bl1.analysis.criticality import branching_ratio, avalanche_size_distribution
-from bl1.analysis.bursts import detect_bursts, burst_statistics
-from bl1.analysis.metrics import rally_length, performance_comparison
+from bl1.analysis.bursts import burst_statistics, detect_bursts
+from bl1.analysis.connectivity import (
+    cross_correlation_matrix,
+    effective_connectivity_graph,
+    rich_club_coefficient,
+    small_world_coefficient,
+    transfer_entropy,
+)
+from bl1.analysis.criticality import avalanche_size_distribution, branching_ratio
+from bl1.analysis.information import (
+    active_information_storage,
+    complexity,
+    integration,
+    mutual_information_matrix,
+)
+from bl1.analysis.metrics import performance_comparison, rally_length
 from bl1.analysis.pharmacology import (
-    DrugEffect,
-    TTX,
-    CARBAMAZEPINE,
-    BICUCULLINE,
     APV,
+    BICUCULLINE,
+    CARBAMAZEPINE,
     CNQX,
+    TTX,
+    DrugEffect,
     apply_drug,
     apply_drug_to_synapses,
     wash_out,
 )
 from bl1.analysis.sensitivity import (
-    parameter_sensitivity,
-    sweep_parameter,
     fit_parameters,
     mean_firing_rate,
+    parameter_sensitivity,
+    sweep_parameter,
     synchrony_index,
     temporal_sparseness,
-)
-from bl1.analysis.connectivity import (
-    cross_correlation_matrix,
-    transfer_entropy,
-    effective_connectivity_graph,
-    small_world_coefficient,
-    rich_club_coefficient,
-)
-from bl1.analysis.information import (
-    active_information_storage,
-    mutual_information_matrix,
-    integration,
-    complexity,
 )
 
 __all__ = [

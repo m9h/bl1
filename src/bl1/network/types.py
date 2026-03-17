@@ -8,12 +8,10 @@ and related transforms without modification.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import NamedTuple, Optional, Tuple
+from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
-from jax.experimental.sparse import BCOO
-
 
 # ---------------------------------------------------------------------------
 # Static network parameters (immutable across a simulation run)
@@ -83,7 +81,10 @@ class CultureState(NamedTuple):
 # when the core module is unavailable.
 
 try:
-    from bl1.core.izhikevich import IzhikevichParams, create_population  # type: ignore[import-untyped]
+    from bl1.core.izhikevich import (  # type: ignore[import-untyped]
+        IzhikevichParams,
+        create_population,
+    )
     _HAS_CORE = True
 except ImportError:
     _HAS_CORE = False
@@ -116,7 +117,7 @@ except ImportError:
         key: jax.Array,
         n_neurons: int,
         ei_ratio: float = 0.8,
-    ) -> Tuple["IzhikevichParams", "_FallbackNeuronState", jnp.ndarray]:
+    ) -> tuple[IzhikevichParams, _FallbackNeuronState, jnp.ndarray]:
         """Fallback population factory (matches core.izhikevich signature).
 
         Returns (params, state, is_excitatory).
@@ -180,8 +181,8 @@ class Culture:
         n_neurons: int,
         ei_ratio: float = 0.8,
         neuron_model: str = "izhikevich",
-        substrate_um: Tuple[float, float] = (3000.0, 3000.0),
-        substrate_3d: Optional[Tuple[float, float, float]] = None,
+        substrate_um: tuple[float, float] = (3000.0, 3000.0),
+        substrate_3d: tuple[float, float, float] | None = None,
         placement: str = "uniform",
         connectivity: str = "distance_dependent",
         lambda_um: float = 200.0,
@@ -190,10 +191,10 @@ class Culture:
         g_inh: float = 0.20,
         dt: float = 0.5,
         spheroid_radius_um: float = 500.0,
-        spheroid_center_um: Optional[Tuple[float, float, float]] = None,
-        layer_depths_um: Optional[tuple] = None,
-        layer_densities: Optional[tuple] = None,
-    ) -> Tuple[NetworkParams, CultureState, IzhikevichParams]:
+        spheroid_center_um: tuple[float, float, float] | None = None,
+        layer_depths_um: tuple | None = None,
+        layer_densities: tuple | None = None,
+    ) -> tuple[NetworkParams, CultureState, IzhikevichParams]:
         """Create a new cortical culture from scratch.
 
         Supports 2D (flat substrate) and 3D (organoid / spheroid / layered

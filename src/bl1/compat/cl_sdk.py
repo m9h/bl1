@@ -18,30 +18,26 @@ Usage (mirrors real CL-SDK exactly)::
 from __future__ import annotations
 
 import contextlib
-import time
-from typing import Generator, Optional
+from collections.abc import Generator
+from dataclasses import dataclass
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-from dataclasses import dataclass, field
 
 from bl1.core.izhikevich import (
-    IzhikevichParams,
-    NeuronState,
-    izhikevich_step,
     create_population,
+    izhikevich_step,
 )
 from bl1.core.synapses import (
     SynapseState,
-    create_synapse_state,
     ampa_step,
-    gaba_a_step,
     compute_synaptic_current,
+    create_synapse_state,
+    gaba_a_step,
 )
-from bl1.network.topology import place_neurons, build_connectivity
 from bl1.mea.electrode import MEA, build_neuron_electrode_map
-
+from bl1.network.topology import build_connectivity, place_neurons
 
 # -----------------------------------------------------------------------
 # Data classes mirroring the CL-SDK types
@@ -126,7 +122,7 @@ class Recording:
         self,
         file_suffix: str = "",
         file_location: str = ".",
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
     ) -> None:
         self.file_suffix = file_suffix
         self.file_location = file_location
@@ -143,7 +139,7 @@ class DataStream:
     def __init__(
         self,
         name: str = "",
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
     ) -> None:
         self.name = name
         self.attributes = attributes or {}
@@ -255,7 +251,7 @@ class Neurons:
         self,
         file_suffix: str = "",
         file_location: str = ".",
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
     ) -> Recording:
         """Start a recording (stub -- data is not persisted yet)."""
         return Recording(file_suffix, file_location, attributes or {})
@@ -263,7 +259,7 @@ class Neurons:
     def create_data_stream(
         self,
         name: str = "",
-        attributes: Optional[dict] = None,
+        attributes: dict | None = None,
     ) -> DataStream:
         """Create a named data stream for event logging."""
         return DataStream(name, attributes or {})

@@ -8,7 +8,7 @@ Provides two integration paths:
   the training server can connect to BL-1 without code changes.
 """
 
-from bl1.compat.cl_sdk import open, Neurons, ChannelSet, StimDesign, BurstDesign, Tick, SpikeEvent
+from bl1.compat.cl_sdk import BurstDesign, ChannelSet, Neurons, SpikeEvent, StimDesign, Tick, open
 from bl1.compat.udp_bridge import VirtualCL1Server
 
 __all__ = [

@@ -8,14 +8,14 @@ with theoretical reference slopes.
 
 from __future__ import annotations
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.figure import Figure
 
 from bl1.visualization._style import (
     BLUE_LIGHT,
-    RED_LIGHT,
     DPI,
+    RED_LIGHT,
     bl1_style,
 )
 

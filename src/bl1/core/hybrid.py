@@ -30,17 +30,17 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-from bl1.core.izhikevich import (
-    IzhikevichParams,
-    NeuronState,
-    izhikevich_step,
-    create_population,
-)
 from bl1.core.adex import (
     AdExParams,
     AdExState,
     adex_step,
     create_adex_population,
+)
+from bl1.core.izhikevich import (
+    IzhikevichParams,
+    NeuronState,
+    create_population,
+    izhikevich_step,
 )
 
 

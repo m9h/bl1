@@ -29,7 +29,6 @@ import numpy as np
 from jax import Array
 from jax.experimental.sparse import BCOO
 
-
 # ---------------------------------------------------------------------------
 # Configuration container
 # ---------------------------------------------------------------------------

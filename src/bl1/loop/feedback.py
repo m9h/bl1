@@ -28,7 +28,6 @@ import jax
 import jax.numpy as jnp
 from jax import Array
 
-
 # ---------------------------------------------------------------------------
 # Event feedback configuration (mirrors doom-neuron EventFeedbackConfig)
 # ---------------------------------------------------------------------------

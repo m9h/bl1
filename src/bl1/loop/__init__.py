@@ -11,8 +11,8 @@ event-based and reward-based protocols provided by
 """
 
 from bl1.loop.controller import ClosedLoop
-from bl1.loop.encoding import encode_sensory
 from bl1.loop.decoding import decode_motor
+from bl1.loop.encoding import encode_sensory
 from bl1.loop.feedback import (
     EventFeedbackConfig,
     FeedbackProtocol,

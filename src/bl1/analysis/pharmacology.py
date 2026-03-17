@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-import jax.numpy as jnp
 from jax import Array
 from jax.experimental.sparse import BCOO
 
@@ -112,9 +111,9 @@ def apply_drug(
 
 
 def apply_drug_to_synapses(
-    syn_state: "bl1.core.synapses.SynapseState",
+    syn_state: SynapseState,
     drug: DrugEffect,
-) -> "bl1.core.synapses.SynapseState":
+) -> SynapseState:
     """Scale existing synaptic conductances by drug factors.
 
     Useful for applying a drug mid-simulation.  Operates on a

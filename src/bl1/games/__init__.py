@@ -5,7 +5,6 @@ with ``jax.lax.scan`` for JIT-compiled experiment loops, and a VizDoom
 wrapper for 3-D deathmatch / survival scenarios (optional dependency).
 """
 
-from bl1.games.pong import Pong, PongState
 from bl1.games.doom import (
     Doom,
     DoomAction,
@@ -13,6 +12,7 @@ from bl1.games.doom import (
     DoomState,
     is_vizdoom_available,
 )
+from bl1.games.pong import Pong, PongState
 
 __all__ = [
     "Pong",

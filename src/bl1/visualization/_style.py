@@ -9,8 +9,8 @@ Provides a consistent look across all publication-quality figures:
 from __future__ import annotations
 
 import contextlib
-import matplotlib.pyplot as plt
 
+import matplotlib.pyplot as plt
 
 # -- Colour palette (ColorBrewer RdBu diverging) --
 BLUE_E = "#2166AC"       # excitatory neurons

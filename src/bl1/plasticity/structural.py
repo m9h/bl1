@@ -32,7 +32,6 @@ import jax.numpy as jnp
 import numpy as np
 from jax import Array
 
-
 # ---------------------------------------------------------------------------
 # Parameter container
 # ---------------------------------------------------------------------------
@@ -118,7 +117,7 @@ def structural_update(
     # ------------------------------------------------------------------
     # Find synapses below threshold.  Only prune excitatory synapses
     # (pre-synaptic neuron is excitatory).
-    weak_mask = (W > 0.0) & (W < params.prune_threshold)
+    weak_mask = (W > 0.0) & (params.prune_threshold > W)
     # Ensure pre-synaptic neuron is excitatory: W[j, i] — i is column.
     exc_pre_mask = is_exc[np.newaxis, :]  # broadcast along rows
     prune_candidates = weak_mask & exc_pre_mask
