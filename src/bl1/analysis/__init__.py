@@ -37,6 +37,19 @@ from bl1.analysis.sensitivity import (
     synchrony_index,
     temporal_sparseness,
 )
+from bl1.analysis.connectivity import (
+    cross_correlation_matrix,
+    transfer_entropy,
+    effective_connectivity_graph,
+    small_world_coefficient,
+    rich_club_coefficient,
+)
+from bl1.analysis.information import (
+    active_information_storage,
+    mutual_information_matrix,
+    integration,
+    complexity,
+)
 
 __all__ = [
     "branching_ratio",
@@ -60,4 +73,13 @@ __all__ = [
     "mean_firing_rate",
     "synchrony_index",
     "temporal_sparseness",
+    "cross_correlation_matrix",
+    "transfer_entropy",
+    "effective_connectivity_graph",
+    "small_world_coefficient",
+    "rich_club_coefficient",
+    "active_information_storage",
+    "mutual_information_matrix",
+    "integration",
+    "complexity",
 ]

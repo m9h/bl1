@@ -138,6 +138,55 @@ def compute_culture_statistics(
     neuron_spike_counts = raster.sum(axis=0)  # (N,)
     stats["fraction_active"] = float(np.mean(neuron_spike_counts > 0))
 
+    # --- Functional connectivity & information metrics ---------------------
+    # These are O(N^2) or worse, so only compute on a small subset of
+    # neurons to keep runtime manageable for large networks.
+    from bl1.analysis.connectivity import cross_correlation_matrix, transfer_entropy
+    from bl1.analysis.information import active_information_storage, integration as compute_integration
+
+    _FC_SUBSET = 50
+    subset_raster = raster[:, :min(N, _FC_SUBSET)]
+
+    try:
+        cc_mat = cross_correlation_matrix(subset_raster, dt_ms=dt_ms)
+        # Mean off-diagonal cross-correlation
+        n_sub = cc_mat.shape[0]
+        if n_sub > 1:
+            mask = ~np.eye(n_sub, dtype=bool)
+            stats["mean_cross_correlation"] = float(np.mean(cc_mat[mask]))
+        else:
+            stats["mean_cross_correlation"] = 0.0
+    except Exception:
+        stats["mean_cross_correlation"] = float("nan")
+
+    try:
+        te_mat = transfer_entropy(
+            subset_raster, dt_ms=dt_ms, history_bins=3, subset=min(N, _FC_SUBSET),
+        )
+        n_sub = te_mat.shape[0]
+        if n_sub > 1:
+            mask = ~np.eye(n_sub, dtype=bool)
+            stats["transfer_entropy_mean"] = float(np.mean(te_mat[mask]))
+        else:
+            stats["transfer_entropy_mean"] = 0.0
+    except Exception:
+        stats["transfer_entropy_mean"] = float("nan")
+
+    try:
+        ais = active_information_storage(
+            subset_raster, dt_ms=dt_ms, history_length=3,
+        )
+        stats["active_information_storage_mean"] = float(np.mean(ais))
+    except Exception:
+        stats["active_information_storage_mean"] = float("nan")
+
+    try:
+        stats["integration"] = compute_integration(
+            subset_raster, dt_ms=dt_ms, n_samples=50,
+        )
+    except Exception:
+        stats["integration"] = float("nan")
+
     return stats
 
 
