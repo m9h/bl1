@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Ruff lint
+        run: ruff check src/bl1/ --output-format github
+      - name: Ruff format check
+        run: ruff format --check src/bl1/
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Install package + dev deps
+        run: uv pip install -e ".[dev]" --system
+      - name: Run tests
+        run: |
+          python -m pytest tests/ \
+            --ignore=tests/test_bursting_calibration.py \
+            -x -q --tb=short \
+            -m "not slow"
+      - name: Run tests with coverage
+        run: |
+          python -m pytest tests/ \
+            --ignore=tests/test_bursting_calibration.py \
+            --cov=src/bl1 --cov-branch \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -q --tb=short \
+            -m "not slow"
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install quality tools
+        run: pip install interrogate vulture radon
+      - name: Docstring coverage
+        run: interrogate src/bl1/ --fail-under 60
+      - name: Dead code check
+        run: vulture src/bl1/ --min-confidence 90
+      - name: Complexity check
+        run: |
+          echo "=== High complexity functions (grade D+) ==="
+          radon cc src/bl1/ -nc -a
