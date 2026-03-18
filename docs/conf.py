@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 # -- Project information ------------------------------------------------------
 project = "BL-1"
-copyright = "2024, BL-1 Contributors"
+copyright = "2024-2026, BL-1 Contributors"
 author = "BL-1 Contributors"
 version = "0.1.0"
 release = "0.1.0"
