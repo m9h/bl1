@@ -19,7 +19,7 @@ from bl1.core.jaxley_adapter import (
 # Marker for tests that require Jaxley to be installed.
 requires_jaxley = pytest.mark.skipif(
     not is_jaxley_available(),
-    reason="Jaxley is not installed",
+    reason="Jaxley is not installed (pip install 'bl1[jaxley]')",
 )
 
 

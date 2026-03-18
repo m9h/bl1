@@ -149,7 +149,8 @@ def sweep_parameter(
         modified = base_params._replace(**{param_name: new_field})
         return simulate_fn(modified)
 
-    return jax.vmap(run_with_param)(param_values)
+    result: Array = jax.vmap(run_with_param)(param_values)
+    return result
 
 
 def fit_parameters(

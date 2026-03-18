@@ -37,6 +37,9 @@ quality = [
 jaxley = [
     "jaxley>=0.3.0",
 ]
+vizdoom = [
+    "vizdoom>=1.2.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bl1"]
@@ -79,6 +82,26 @@ exclude = ["notebooks/", "benchmarks/", "scripts/", "tests/"]
 module = "bl1.core.*"
 check_untyped_defs = true
 
+[[tool.mypy.overrides]]
+module = "bl1.analysis.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "bl1.compat.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "bl1.mea.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "bl1.validation.*"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "bl1.visualization.*"
+check_untyped_defs = true
+
 [tool.coverage.run]
 branch = true
 source = ["src/bl1"]
@@ -105,5 +128,5 @@ fail-under = 60
 exclude = ["tests", "notebooks", "benchmarks", "scripts"]
 
 [tool.vulture]
-min_confidence = 80
+min_confidence = 90
 exclude = ["tests/", "notebooks/", "benchmarks/", "scripts/"]

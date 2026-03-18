@@ -54,7 +54,7 @@ def _bin_spikes_per_neuron(
 
     trimmed = raster[: n_bins * steps_per_bin]
     binned = trimmed.reshape(n_bins, steps_per_bin, N).sum(axis=1)
-    return binned.astype(np.float64)
+    return np.asarray(binned, dtype=np.float64)
 
 
 def _discretize(counts: NDArray) -> NDArray:
@@ -67,7 +67,7 @@ def _discretize(counts: NDArray) -> NDArray:
     Returns:
         Integer array with values in {0, 1, 2}.
     """
-    return np.minimum(counts, 2).astype(np.int64)
+    return np.asarray(np.minimum(counts, 2), dtype=np.int64)
 
 
 def _entropy(probs: NDArray) -> float:

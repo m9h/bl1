@@ -57,7 +57,7 @@ def _bin_spikes_per_neuron(
     trimmed = raster[: n_bins * steps_per_bin]
     # (n_bins, steps_per_bin, N) -> sum over time axis
     binned = trimmed.reshape(n_bins, steps_per_bin, N).sum(axis=1)
-    return binned.astype(np.float64)
+    return np.asarray(binned, dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ def _binary_history_to_int(history: NDArray) -> NDArray:
     """
     h = history.shape[1]
     powers = (2 ** np.arange(h, dtype=np.int64))[::-1]
-    return (history * powers).sum(axis=1).astype(np.int64)
+    return np.asarray((history * powers).sum(axis=1), dtype=np.int64)
 
 
 def _entropy(probs: NDArray) -> float:
@@ -304,7 +304,7 @@ def effective_connectivity_graph(
     if len(positive) == 0:
         return np.zeros_like(te_matrix, dtype=np.float64)
     threshold = np.percentile(positive, threshold_percentile)
-    return (te_matrix > threshold).astype(np.float64)
+    return np.asarray(te_matrix > threshold, dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------

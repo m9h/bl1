@@ -49,7 +49,7 @@ def _bin_spikes(
 
     # Reshape to (n_bins, steps_per_bin, N) and sum over time and neurons
     binned = trimmed.reshape(n_bins, steps_per_bin, -1).sum(axis=(1, 2))
-    return binned.astype(np.float64)
+    return np.asarray(binned, dtype=np.float64)
 
 
 # ---------------------------------------------------------------------------

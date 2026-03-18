@@ -362,8 +362,8 @@ def select_electrode_subset(
     if region == "random":
         if key is None:
             raise ValueError("A JAX PRNG key is required for region='random'.")
-        idx = jax.random.choice(key, total, shape=(n_electrodes,), replace=False)
-        return jnp.sort(idx)
+        chosen = jax.random.choice(key, total, shape=(n_electrodes,), replace=False)
+        return jnp.sort(chosen)
 
     if region == "grid":
         rows, cols = mea_config.grid_shape

@@ -127,26 +127,29 @@ def plot_isi_distribution(
         fig, ax = plt.subplots(figsize=figsize, dpi=DPI)
 
         if neuron_idx is not None:
+            assert spike_times is not None
             if len(spike_times) > 1:
                 isis_ms = np.diff(spike_times) * dt_ms
             else:
-                isis_ms = np.array([])
+                isis_ms = np.array([], dtype=np.float64)
         else:
             if all_isis:
                 isis_ms = np.concatenate(all_isis) * dt_ms
             else:
-                isis_ms = np.array([])
+                isis_ms = np.array([], dtype=np.float64)
+
+        isis_ms = np.asarray(isis_ms, dtype=np.float64)
 
         if len(isis_ms) > 0:
             # Log-spaced bins
-            low = max(isis_ms.min(), dt_ms)
-            high = isis_ms.max()
+            low = float(max(isis_ms.min(), dt_ms))
+            high = float(isis_ms.max())
             if high > low:
                 bins = np.logspace(np.log10(low), np.log10(high), n_bins)
             else:
                 bins = np.linspace(low * 0.9, high * 1.1, n_bins)
 
-            ax.hist(isis_ms, bins=bins, color=BLUE_LIGHT, edgecolor="white", alpha=0.8)
+            ax.hist(isis_ms, bins=bins.tolist(), color=BLUE_LIGHT, edgecolor="white", alpha=0.8)
             ax.set_xscale("log")
 
             median_isi = np.median(isis_ms)

@@ -197,17 +197,17 @@ class VirtualCL1Server:
         print("=" * 70)
 
         stim_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        stim_sock.bind(("0.0.0.0", self.stim_port))
+        stim_sock.bind(("0.0.0.0", self.stim_port))  # nosec B104
         stim_sock.setblocking(False)
 
         spike_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         event_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        event_sock.bind(("0.0.0.0", self.event_port))
+        event_sock.bind(("0.0.0.0", self.event_port))  # nosec B104
         event_sock.setblocking(False)
 
         fb_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        fb_sock.bind(("0.0.0.0", self.feedback_port))
+        fb_sock.bind(("0.0.0.0", self.feedback_port))  # nosec B104
         fb_sock.setblocking(False)
 
         last_stats = time.time()

@@ -21,7 +21,8 @@ except ImportError:
     HAS_VIZDOOM = False
 
 skip_no_vizdoom = pytest.mark.skipif(
-    not HAS_VIZDOOM, reason="VizDoom not installed"
+    not HAS_VIZDOOM,
+    reason="VizDoom not installed (pip install vizdoom)",
 )
 
 

@@ -81,7 +81,7 @@ def grow_to_div(
     is_excitatory: Array,
     target_div: float,
     params: GrowthParams | None = None,
-    current_state: GrowthState | None = None,
+    _current_state: GrowthState | None = None,
 ) -> GrowthState:
     """Grow the network to the specified DIV.
 
@@ -94,7 +94,7 @@ def grow_to_div(
         is_excitatory: (N,) boolean mask
         target_div: Target days in vitro (e.g., 28)
         params: Growth parameters
-        current_state: Optional starting state (if None, starts from DIV 0)
+        _current_state: Reserved for future incremental growth (currently unused)
 
     Returns:
         GrowthState at the target DIV
@@ -171,7 +171,7 @@ def mature_network(
     positions: Array,
     is_excitatory: Array,
     target_div: float = 28.0,
-    accelerated: bool = True,
+    _accelerated: bool = True,
     params: GrowthParams | None = None,
 ) -> tuple[Array, Array]:
     """Convenience: grow network and return (W_exc, W_inh) ready for simulation.
@@ -181,7 +181,7 @@ def mature_network(
         positions: (N, 2) neuron positions in um
         is_excitatory: (N,) boolean mask
         target_div: Target days in vitro (default 28.0)
-        accelerated: If True, jump directly to target_div (no intermediate steps)
+        _accelerated: Reserved for future multi-step growth (currently unused)
         params: Growth parameters
 
     Returns:
