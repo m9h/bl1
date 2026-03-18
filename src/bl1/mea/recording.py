@@ -18,6 +18,7 @@ from jax import Array
 # Per-timestep spike detection
 # ---------------------------------------------------------------------------
 
+
 @jax.jit
 def detect_spikes(
     spikes: Array,
@@ -45,6 +46,7 @@ def detect_spikes(
 # Firing-rate estimation
 # ---------------------------------------------------------------------------
 
+
 def compute_electrode_rates(
     spike_history: Array,
     neuron_electrode_map: Array,
@@ -70,7 +72,7 @@ def compute_electrode_rates(
     window_steps = min(max(int(round(window_ms / dt)), 1), T)
 
     # Slice the most recent window_steps rows
-    windowed = spike_history[T - window_steps:]
+    windowed = spike_history[T - window_steps :]
 
     # Sum spikes over time: (T_win, N) -> (N,)
     total_spikes_per_neuron = windowed.astype(jnp.float32).sum(axis=0)

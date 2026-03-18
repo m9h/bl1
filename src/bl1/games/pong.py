@@ -22,17 +22,19 @@ from jax import Array
 # State container
 # ---------------------------------------------------------------------------
 
+
 class PongState(NamedTuple):
     """Complete game state for a single Pong instance."""
-    ball_x: Array          # scalar, 0-1 normalised horizontal position
-    ball_y: Array          # scalar, 0-1 normalised vertical position
-    ball_vx: Array         # scalar, horizontal velocity (positive = rightward)
-    ball_vy: Array         # scalar, vertical velocity
-    paddle_y: Array        # scalar, 0-1 normalised paddle centre
-    score_hits: Array      # scalar int, cumulative hits
-    score_misses: Array    # scalar int, cumulative misses
-    rally_length: Array    # scalar int, current consecutive hits
-    rally_history: Array   # (max_rallies,) completed rally lengths
+
+    ball_x: Array  # scalar, 0-1 normalised horizontal position
+    ball_y: Array  # scalar, 0-1 normalised vertical position
+    ball_vx: Array  # scalar, horizontal velocity (positive = rightward)
+    ball_vy: Array  # scalar, vertical velocity
+    paddle_y: Array  # scalar, 0-1 normalised paddle centre
+    score_hits: Array  # scalar int, cumulative hits
+    score_misses: Array  # scalar int, cumulative misses
+    rally_length: Array  # scalar int, current consecutive hits
+    rally_history: Array  # (max_rallies,) completed rally lengths
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +54,7 @@ EVENT_MISS: int = 2
 # Pong environment
 # ---------------------------------------------------------------------------
 
+
 class Pong:
     """Simple Pong game environment.
 
@@ -67,10 +70,10 @@ class Pong:
         state, event = game.step(state, action=1, key=key)
     """
 
-    paddle_height: float = 0.2    # fraction of field height
-    paddle_speed: float = 0.03    # paddle movement per step
-    ball_speed: float = 0.01      # base ball speed per step
-    max_rallies: int = 1024       # size of rally_history buffer
+    paddle_height: float = 0.2  # fraction of field height
+    paddle_speed: float = 0.03  # paddle movement per step
+    ball_speed: float = 0.01  # base ball speed per step
+    max_rallies: int = 1024  # size of rally_history buffer
 
     def __init__(
         self,

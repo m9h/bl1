@@ -45,14 +45,14 @@ def firing_rate_penalty(
     deviation = rates - target_rate_hz
 
     if penalty_type == "l2":
-        return jnp.mean(deviation ** 2)
+        return jnp.mean(deviation**2)
     else:  # huber
         delta = 2.0
         abs_dev = jnp.abs(deviation)
         return jnp.mean(
             jnp.where(
                 abs_dev <= delta,
-                0.5 * deviation ** 2,
+                0.5 * deviation**2,
                 delta * (abs_dev - 0.5 * delta),
             )
         )
@@ -79,7 +79,7 @@ def sparsity_penalty(
     """
     rates = spike_history.mean(axis=0) * (1000.0 / dt_ms)
     excess = jnp.maximum(0.0, rates - max_rate_hz)
-    return jnp.mean(excess ** 2)
+    return jnp.mean(excess**2)
 
 
 def silence_penalty(
@@ -103,4 +103,4 @@ def silence_penalty(
     """
     rates = spike_history.mean(axis=0) * (1000.0 / dt_ms)
     deficit = jnp.maximum(0.0, min_rate_hz - rates)
-    return jnp.mean(deficit ** 2)
+    return jnp.mean(deficit**2)

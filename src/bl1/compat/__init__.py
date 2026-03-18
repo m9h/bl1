@@ -12,6 +12,12 @@ from bl1.compat.cl_sdk import BurstDesign, ChannelSet, Neurons, SpikeEvent, Stim
 from bl1.compat.udp_bridge import VirtualCL1Server
 
 __all__ = [
-    "open", "Neurons", "ChannelSet", "StimDesign", "BurstDesign",
-    "Tick", "SpikeEvent", "VirtualCL1Server",
+    "open",
+    "Neurons",
+    "ChannelSet",
+    "StimDesign",
+    "BurstDesign",
+    "Tick",
+    "SpikeEvent",
+    "VirtualCL1Server",
 ]

@@ -14,6 +14,7 @@ from jax import Array
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def decode_motor(
     spike_history_window: Array,
     neuron_electrode_map: Array,
@@ -82,7 +83,7 @@ def decode_motor(
 
         # Mean weighted spike count per neuron in this region
         region_weighted = jnp.sum(weighted_spikes * region_mask.astype(jnp.float32))
-        mean_weighted = region_weighted / n_neurons_region
+        _mean_weighted = region_weighted / n_neurons_region
 
         # Convert to Hz.  ``mean_weighted`` is a weighted average spike
         # probability per timestep.  Multiply by the effective number of
@@ -106,9 +107,7 @@ def decode_motor(
         dt_ms_assumed = 0.5
         window_s = (W * dt_ms_assumed) / 1000.0
 
-        raw_spikes = jnp.sum(
-            spikes_f * region_mask.astype(jnp.float32)[None, :], axis=(0, 1)
-        )
+        raw_spikes = jnp.sum(spikes_f * region_mask.astype(jnp.float32)[None, :], axis=(0, 1))
         raw_rate = raw_spikes / (n_neurons_region * window_s)
         rates_dict[region_name] = float(raw_rate)
 

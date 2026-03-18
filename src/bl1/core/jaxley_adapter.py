@@ -348,7 +348,10 @@ class JaxleyNetwork:
             return (s, acc_spikes), None
 
         (state, any_spikes), _ = jax.lax.scan(
-            _body, (state, any_spikes), xs=None, length=n_steps,
+            _body,
+            (state, any_spikes),
+            xs=None,
+            length=n_steps,
         )
         return state, any_spikes
 

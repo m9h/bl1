@@ -60,9 +60,7 @@ def delay_buffer_step(
         Updated buffer state with new spikes written at head position.
     """
     max_delay = state.buffer.shape[0]
-    new_buffer = state.buffer.at[state.head % max_delay].set(
-        spikes.astype(jnp.float32)
-    )
+    new_buffer = state.buffer.at[state.head % max_delay].set(spikes.astype(jnp.float32))
     new_head = state.head + 1
     return DelayBufferState(buffer=new_buffer, head=new_head)
 

@@ -44,19 +44,22 @@ from jax import Array
 # Parameter and state containers
 # ---------------------------------------------------------------------------
 
+
 class STPParams(NamedTuple):
     """Per-synapse STP parameters.
 
     For the MVP implementation these are per-neuron parameters (one value per
     pre-synaptic neuron), broadcast across all outgoing synapses.
     """
-    U: Array          # (N,) baseline release probability
-    tau_rec: Array    # (N,) recovery time constant (ms)
-    tau_fac: Array    # (N,) facilitation time constant (ms)
+
+    U: Array  # (N,) baseline release probability
+    tau_rec: Array  # (N,) recovery time constant (ms)
+    tau_fac: Array  # (N,) facilitation time constant (ms)
 
 
 class STPState(NamedTuple):
     """Per-neuron STP state variables."""
+
     x: Array  # (N,) available resources (fraction, 0-1)
     u: Array  # (N,) release probability (fraction, 0-1)
 
@@ -64,6 +67,7 @@ class STPState(NamedTuple):
 # ---------------------------------------------------------------------------
 # Initialisation helpers
 # ---------------------------------------------------------------------------
+
 
 def create_stp_params(n_neurons: int, is_excitatory: Array) -> STPParams:
     """Create STP parameters based on neuron type.
@@ -105,6 +109,7 @@ def init_stp_state(n_neurons: int, stp_params: STPParams) -> STPState:
 # ---------------------------------------------------------------------------
 # Core STP update
 # ---------------------------------------------------------------------------
+
 
 @jax.jit
 def stp_step(

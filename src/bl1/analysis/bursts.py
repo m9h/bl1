@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 # Burst detection
 # ---------------------------------------------------------------------------
 
+
 def detect_bursts(
     spike_raster: NDArray,
     dt_ms: float = 0.5,
@@ -108,6 +109,7 @@ def detect_bursts(
 # ---------------------------------------------------------------------------
 # Burst statistics
 # ---------------------------------------------------------------------------
+
 
 def burst_statistics(
     bursts: list[tuple[float, float, int, float]],

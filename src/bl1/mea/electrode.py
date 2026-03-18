@@ -33,13 +33,15 @@ from jax.experimental.sparse import BCOO
 # Configuration container
 # ---------------------------------------------------------------------------
 
+
 class MEAConfig(NamedTuple):
     """MEA hardware configuration."""
+
     name: str
     n_electrodes: int
-    grid_shape: tuple          # (rows, cols)
-    spacing_um: float          # inter-electrode distance in um
-    positions: Array           # (n_electrodes, 2) electrode positions in um
+    grid_shape: tuple  # (rows, cols)
+    spacing_um: float  # inter-electrode distance in um
+    positions: Array  # (n_electrodes, 2) electrode positions in um
     detection_radius_um: float = 100.0
     activation_radius_um: float = 75.0
 
@@ -47,6 +49,7 @@ class MEAConfig(NamedTuple):
 # ---------------------------------------------------------------------------
 # Built-in electrode layouts
 # ---------------------------------------------------------------------------
+
 
 def _make_cl1_64ch() -> MEAConfig:
     """CL1 64-channel MEA: 8x8 grid, 200 um spacing on a 3000x3000 um substrate."""
@@ -108,6 +111,7 @@ def _make_maxone_hd() -> MEAConfig:
 # MEA wrapper class
 # ---------------------------------------------------------------------------
 
+
 class MEA:
     """Virtual multi-electrode array.
 
@@ -154,6 +158,7 @@ class MEA:
 # Neuron-electrode spatial mapping
 # ---------------------------------------------------------------------------
 
+
 def build_neuron_electrode_map(
     neuron_positions: Array,
     electrode_positions: Array,
@@ -186,13 +191,14 @@ def build_neuron_electrode_map(
         diff = electrode_3d[:, None, :] - neuron_positions[None, :, :]
     else:
         diff = electrode_positions[:, None, :] - neuron_positions[None, :, :]
-    dist = jnp.sqrt(jnp.sum(diff ** 2, axis=-1))  # (E, N)
+    dist = jnp.sqrt(jnp.sum(diff**2, axis=-1))  # (E, N)
     return dist < radius_um
 
 
 # ---------------------------------------------------------------------------
 # Sparse neuron-electrode mapping (HD-MEA)
 # ---------------------------------------------------------------------------
+
 
 def build_neuron_electrode_map_sparse(
     neuron_positions: Array,
@@ -256,11 +262,7 @@ def build_neuron_electrode_map_sparse(
     elec_bins = (elec_np[:, :2] / bin_size).astype(np.int32)  # (E, 2)
 
     # Relative offsets: 3x3 neighbourhood
-    offsets = [
-        (dx, dy)
-        for dx in range(-1, 2)
-        for dy in range(-1, 2)
-    ]
+    offsets = [(dx, dy) for dx in range(-1, 2) for dy in range(-1, 2)]
 
     # --- collect sparse entries --------------------------------------------
     row_parts: list[np.ndarray] = []
@@ -281,7 +283,7 @@ def build_neuron_electrode_map_sparse(
 
         # Distance: use full dimensionality (2D or 3D)
         diff = cand_pos - elec_3d[e]  # (C, 2) or (C, 3)
-        dist = np.sqrt(np.sum(diff ** 2, axis=-1))  # (C,)
+        dist = np.sqrt(np.sum(diff**2, axis=-1))  # (C,)
 
         within = dist < radius_um
         if not np.any(within):
@@ -300,8 +302,7 @@ def build_neuron_electrode_map_sparse(
         cols_np = np.empty(0, dtype=np.int64)
 
     indices = jnp.stack(
-        [jnp.array(rows_np, dtype=jnp.int32),
-         jnp.array(cols_np, dtype=jnp.int32)],
+        [jnp.array(rows_np, dtype=jnp.int32), jnp.array(cols_np, dtype=jnp.int32)],
         axis=-1,
     )
     data = jnp.ones(indices.shape[0], dtype=jnp.float32)
@@ -311,6 +312,7 @@ def build_neuron_electrode_map_sparse(
 # ---------------------------------------------------------------------------
 # Electrode subset selection (HD-MEA routing constraint)
 # ---------------------------------------------------------------------------
+
 
 def select_electrode_subset(
     mea_config: MEAConfig,
@@ -386,14 +388,13 @@ def select_electrode_subset(
 
         return jnp.array(np.sort(flat_idx), dtype=jnp.int32)
 
-    raise ValueError(
-        f"Unknown region: {region!r}. Expected 'center', 'random', or 'grid'."
-    )
+    raise ValueError(f"Unknown region: {region!r}. Expected 'center', 'random', or 'grid'.")
 
 
 # ---------------------------------------------------------------------------
 # Local field potential approximation
 # ---------------------------------------------------------------------------
+
 
 def compute_lfp(
     neuron_positions: Array,
@@ -434,7 +435,7 @@ def compute_lfp(
         electrode_positions = jnp.pad(electrode_positions, ((0, 0), (0, 1)))
     # (E, 1, D) - (1, N, D) -> (E, N, D) -> (E, N)
     diff = electrode_positions[:, None, :] - neuron_positions[None, :, :]
-    dist_um = jnp.sqrt(jnp.sum(diff ** 2, axis=-1))  # (E, N)
+    dist_um = jnp.sqrt(jnp.sum(diff**2, axis=-1))  # (E, N)
 
     # Clamp minimum distance to 1 um to avoid singularity
     dist_um = jnp.maximum(dist_um, 1.0)

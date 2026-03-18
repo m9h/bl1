@@ -16,12 +16,15 @@ Methods:
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 from numpy.typing import NDArray
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _bin_spikes_per_neuron(
     spike_raster: NDArray,
@@ -40,8 +43,7 @@ def _bin_spikes_per_neuron(
     """
     raster = np.asarray(spike_raster, dtype=np.float32)
     if raster.size == 0:
-        return np.empty((0, raster.shape[1] if raster.ndim == 2 else 0),
-                        dtype=np.float64)
+        return np.empty((0, raster.shape[1] if raster.ndim == 2 else 0), dtype=np.float64)
 
     steps_per_bin = max(int(round(bin_ms / dt_ms)), 1)
     T, N = raster.shape
@@ -117,6 +119,7 @@ def _joint_entropy_from_samples(samples_a: NDArray, samples_b: NDArray) -> float
 # Active information storage
 # ---------------------------------------------------------------------------
 
+
 def active_information_storage(
     spike_raster: NDArray,
     dt_ms: float = 0.5,
@@ -160,9 +163,9 @@ def active_information_storage(
         future = signal[history_length:]  # (n_samples,)
 
         # Encode past as integer: (s[t-k], ..., s[t-1]) -> base-3 integer
-        past_windows = np.lib.stride_tricks.sliding_window_view(
-            signal[:n_bins], history_length
-        )[:n_samples]  # (n_samples, history_length)
+        past_windows = np.lib.stride_tricks.sliding_window_view(signal[:n_bins], history_length)[
+            :n_samples
+        ]  # (n_samples, history_length)
 
         powers = (3 ** np.arange(history_length, dtype=np.int64))[::-1]
         past_states = (past_windows * powers).sum(axis=1)
@@ -180,6 +183,7 @@ def active_information_storage(
 # ---------------------------------------------------------------------------
 # Mutual information matrix
 # ---------------------------------------------------------------------------
+
 
 def mutual_information_matrix(
     spike_raster: NDArray,
@@ -234,6 +238,7 @@ def mutual_information_matrix(
 # ---------------------------------------------------------------------------
 # Integration
 # ---------------------------------------------------------------------------
+
 
 def integration(
     spike_raster: NDArray,
@@ -304,6 +309,7 @@ def integration(
 # Complexity (Tononi, Sporns & Edelman 1994)
 # ---------------------------------------------------------------------------
 
+
 def complexity(
     spike_raster: NDArray,
     dt_ms: float = 0.5,
@@ -354,7 +360,7 @@ def complexity(
 
     for k in range(1, max_k + 1):
         h_k_samples: list[float] = []
-        n_iter = min(n_samples, max(1, int(np.math.comb(N, k))))
+        n_iter = min(n_samples, max(1, math.comb(N, k)))
 
         for _ in range(n_iter):
             if k < N:

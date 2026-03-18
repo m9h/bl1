@@ -37,25 +37,29 @@ from jax.experimental.sparse import BCOO
 # Parameter and state containers
 # ---------------------------------------------------------------------------
 
+
 class STDPParams(NamedTuple):
     """Static parameters governing the STDP learning rule."""
-    A_plus: float = 0.005       # LTP amplitude
-    A_minus: float = 0.00525    # LTD amplitude (slight dominance for stability)
-    tau_plus: float = 20.0      # LTP time constant (ms)
-    tau_minus: float = 50.0     # LTD time constant (ms)
-    w_max: float = 0.1          # Maximum excitatory weight
-    w_min: float = 0.0          # Minimum weight
+
+    A_plus: float = 0.005  # LTP amplitude
+    A_minus: float = 0.00525  # LTD amplitude (slight dominance for stability)
+    tau_plus: float = 20.0  # LTP time constant (ms)
+    tau_minus: float = 50.0  # LTD time constant (ms)
+    w_max: float = 0.1  # Maximum excitatory weight
+    w_min: float = 0.0  # Minimum weight
 
 
 class STDPState(NamedTuple):
     """Per-neuron eligibility traces updated every timestep."""
-    pre_trace: Array   # (N,) pre-synaptic eligibility trace
+
+    pre_trace: Array  # (N,) pre-synaptic eligibility trace
     post_trace: Array  # (N,) post-synaptic eligibility trace
 
 
 # ---------------------------------------------------------------------------
 # Initialisation helper
 # ---------------------------------------------------------------------------
+
 
 def init_stdp_state(n_neurons: int) -> STDPState:
     """Create a zeroed STDP state for *n_neurons* neurons.
@@ -76,6 +80,7 @@ def init_stdp_state(n_neurons: int) -> STDPState:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _is_bcoo(x: Array | BCOO) -> bool:
     """Return True if *x* is a JAX BCOO sparse matrix."""
     return isinstance(x, BCOO)
@@ -84,6 +89,7 @@ def _is_bcoo(x: Array | BCOO) -> bool:
 # ---------------------------------------------------------------------------
 # Dense weight update
 # ---------------------------------------------------------------------------
+
 
 @jax.jit
 def _stdp_update_dense(
@@ -125,14 +131,14 @@ def _stdp_update_dense(
     #   dW_ltd[j, i] = spikes[i] * post_trace[j]
 
     dW = (
-        spikes_f[:, None] * pre_trace[None, :]      # LTP  (N_post, N_pre)
-        - post_trace[:, None] * spikes_f[None, :]    # LTD  (N_post, N_pre)
+        spikes_f[:, None] * pre_trace[None, :]  # LTP  (N_post, N_pre)
+        - post_trace[:, None] * spikes_f[None, :]  # LTD  (N_post, N_pre)
     )
 
     # Only update existing excitatory connections.  Inhibitory weights and
     # absent connections (zero entries) are left untouched.
-    exc_mask = is_excitatory[None, :]   # pre-synaptic neuron must be excitatory
-    conn_mask = W_exc > 0.0             # only where a connection exists
+    exc_mask = is_excitatory[None, :]  # pre-synaptic neuron must be excitatory
+    conn_mask = W_exc > 0.0  # only where a connection exists
 
     W_new = W_exc + dW * conn_mask * exc_mask
     W_new = jnp.clip(W_new, w_min, w_max)
@@ -148,6 +154,7 @@ def _stdp_update_dense(
 # ---------------------------------------------------------------------------
 # Sparse (BCOO) weight update
 # ---------------------------------------------------------------------------
+
 
 @jax.jit
 def _stdp_update_sparse(
@@ -202,9 +209,9 @@ def _stdp_update_sparse(
     # ------------------------------------------------------------------
     # rows = post-synaptic indices (j), cols = pre-synaptic indices (i)
     # LTP: post j spiked → use pre_trace of i
-    ltp = spikes_f[W_exc_rows] * pre_trace[W_exc_cols]     # (nnz,)
+    ltp = spikes_f[W_exc_rows] * pre_trace[W_exc_cols]  # (nnz,)
     # LTD: pre i spiked → use post_trace of j
-    ltd = spikes_f[W_exc_cols] * post_trace[W_exc_rows]    # (nnz,)
+    ltd = spikes_f[W_exc_cols] * post_trace[W_exc_rows]  # (nnz,)
 
     # Only update excitatory pre-synaptic connections
     exc_mask = is_excitatory[W_exc_cols].astype(jnp.float32)  # (nnz,)
@@ -219,6 +226,7 @@ def _stdp_update_sparse(
 # ---------------------------------------------------------------------------
 # Public dispatch function
 # ---------------------------------------------------------------------------
+
 
 def stdp_update(
     stdp_state: STDPState,
@@ -269,5 +277,10 @@ def stdp_update(
         return new_state, new_W_exc
 
     return _stdp_update_dense(
-        stdp_state, stdp_params, spikes, W_exc, is_excitatory, dt,
+        stdp_state,
+        stdp_params,
+        spikes,
+        W_exc,
+        is_excitatory,
+        dt,
     )

@@ -42,22 +42,26 @@ from jax.experimental.sparse import BCOO
 # Parameter and state containers
 # ---------------------------------------------------------------------------
 
+
 class HomeostaticParams(NamedTuple):
     """Parameters for homeostatic synaptic scaling."""
-    r_target: float = 5.0    # Target firing rate (Hz)
-    eta: float = 1e-5         # Learning rate per ms
-    w_min: float = 0.001      # Minimum weight (don't scale to zero)
-    w_max: float = 0.2        # Maximum weight
+
+    r_target: float = 5.0  # Target firing rate (Hz)
+    eta: float = 1e-5  # Learning rate per ms
+    w_min: float = 0.001  # Minimum weight (don't scale to zero)
+    w_max: float = 0.2  # Maximum weight
 
 
 class HomeostaticState(NamedTuple):
     """State for homeostatic scaling -- tracks firing rate estimates."""
+
     rate_estimate: Array  # (N,) exponential moving average of firing rate (Hz)
 
 
 # ---------------------------------------------------------------------------
 # Initialisation helper
 # ---------------------------------------------------------------------------
+
 
 def init_homeostatic_state(
     n_neurons: int,
@@ -85,6 +89,7 @@ def init_homeostatic_state(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _is_bcoo(x: Array | BCOO) -> bool:
     """Return True if *x* is a JAX BCOO sparse matrix."""
     return isinstance(x, BCOO)
@@ -93,6 +98,7 @@ def _is_bcoo(x: Array | BCOO) -> bool:
 # ---------------------------------------------------------------------------
 # Rate estimation
 # ---------------------------------------------------------------------------
+
 
 @jax.jit
 def update_rate_estimate(
@@ -130,6 +136,7 @@ def update_rate_estimate(
 # Dense weight update
 # ---------------------------------------------------------------------------
 
+
 @jax.jit
 def _homeostatic_scaling_dense(
     state: HomeostaticState,
@@ -155,7 +162,7 @@ def _homeostatic_scaling_dense(
 
     # Masks for E->E connections
     post_exc = is_excitatory[:, None]  # (N, 1) post is excitatory
-    pre_exc = is_excitatory[None, :]   # (1, N) pre is excitatory
+    pre_exc = is_excitatory[None, :]  # (1, N) pre is excitatory
     ee_mask = post_exc & pre_exc
 
     # Only scale existing E->E connections (W > 0)
@@ -172,6 +179,7 @@ def _homeostatic_scaling_dense(
 # ---------------------------------------------------------------------------
 # Sparse (BCOO) weight update
 # ---------------------------------------------------------------------------
+
 
 @jax.jit
 def _homeostatic_scaling_sparse(
@@ -210,9 +218,7 @@ def _homeostatic_scaling_sparse(
     scale = 1.0 + eta * dt_ms * rate_error[W_exc_rows]  # (nnz,)
 
     # E->E mask: both pre and post must be excitatory
-    ee_mask = (
-        is_excitatory[W_exc_rows] & is_excitatory[W_exc_cols]
-    ).astype(jnp.float32)  # (nnz,)
+    ee_mask = (is_excitatory[W_exc_rows] & is_excitatory[W_exc_cols]).astype(jnp.float32)  # (nnz,)
 
     # Apply scaling only to E->E synapses; leave others unchanged
     new_data = jnp.where(ee_mask > 0.5, W_exc_data * scale, W_exc_data)
@@ -224,6 +230,7 @@ def _homeostatic_scaling_sparse(
 # ---------------------------------------------------------------------------
 # Public dispatch function
 # ---------------------------------------------------------------------------
+
 
 def homeostatic_scaling(
     state: HomeostaticState,
@@ -274,5 +281,9 @@ def homeostatic_scaling(
         return new_state, new_W_exc
 
     return _homeostatic_scaling_dense(
-        state, params, W_exc, is_excitatory, dt_ms,
+        state,
+        params,
+        W_exc,
+        is_excitatory,
+        dt_ms,
     )

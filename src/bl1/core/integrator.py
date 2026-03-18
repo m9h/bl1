@@ -74,6 +74,7 @@ PlasticityFn = Callable[[Any, Array, Array], tuple[Any, Array]]
 
 class SimulationResult(NamedTuple):
     """Outputs returned by :func:`simulate`."""
+
     final_neuron_state: NeuronState
     final_syn_state: SynapseState
     final_stdp_state: Any
@@ -196,9 +197,7 @@ def simulate(
             "Use the standard no-delay path for differentiable simulation."
         )
     if use_event_driven and use_delays:
-        raise ValueError(
-            "use_event_driven=True is not yet supported with axonal delays."
-        )
+        raise ValueError("use_event_driven=True is not yet supported with axonal delays.")
     if use_event_driven and use_fast_sparse:
         raise ValueError(
             "use_event_driven and use_fast_sparse are mutually exclusive. "
@@ -227,27 +226,58 @@ def simulate(
         if W_inh_delays is not None:
             max_delay = max(max_delay, compute_max_delay(W_inh_delays))
         return _simulate_with_delays(
-            params, init_state, syn_state, stdp_state,
-            W_exc, W_inh, I_external, dt, plasticity_fn,
-            W_exc_delays, W_inh_delays, max_delay,
+            params,
+            init_state,
+            syn_state,
+            stdp_state,
+            W_exc,
+            W_inh,
+            I_external,
+            dt,
+            plasticity_fn,
+            W_exc_delays,
+            W_inh_delays,
+            max_delay,
             stp_params,
         )
     elif use_event_driven:
         return _simulate_no_delays_event_driven(
-            params, init_state, syn_state, stdp_state,
-            W_exc, W_inh, I_external, dt, plasticity_fn,
-            stp_params, max_active,
+            params,
+            init_state,
+            syn_state,
+            stdp_state,
+            W_exc,
+            W_inh,
+            I_external,
+            dt,
+            plasticity_fn,
+            stp_params,
+            max_active,
         )
     elif use_fast_sparse:
         return _simulate_no_delays_fast_sparse(
-            params, init_state, syn_state, stdp_state,
-            W_exc, W_inh, I_external, dt, plasticity_fn,
+            params,
+            init_state,
+            syn_state,
+            stdp_state,
+            W_exc,
+            W_inh,
+            I_external,
+            dt,
+            plasticity_fn,
             stp_params,
         )
     else:
         return _simulate_no_delays(
-            params, init_state, syn_state, stdp_state,
-            W_exc, W_inh, I_external, dt, plasticity_fn,
+            params,
+            init_state,
+            syn_state,
+            stdp_state,
+            W_exc,
+            W_inh,
+            I_external,
+            dt,
+            plasticity_fn,
             stp_params,
             surrogate=surrogate,
             surrogate_fn=surrogate_fn,
@@ -259,9 +289,17 @@ def simulate(
 # Path 1: original instantaneous transmission (no delays)
 # =========================================================================
 
+
 def _simulate_no_delays(
-    params, init_state, syn_state, stdp_state,
-    W_exc, W_inh, I_external, dt, plasticity_fn,
+    params,
+    init_state,
+    syn_state,
+    stdp_state,
+    W_exc,
+    W_inh,
+    I_external,
+    dt,
+    plasticity_fn,
     stp_params=None,
     surrogate=False,
     surrogate_fn=None,
@@ -288,8 +326,12 @@ def _simulate_no_delays(
     def _neuron_step(neuron_state, I_total):
         if use_surrogate:
             return izhikevich_step_surrogate(
-                neuron_state, params, I_total, dt,
-                surrogate_fn=surrogate_fn, beta=surrogate_beta,
+                neuron_state,
+                params,
+                I_total,
+                dt,
+                surrogate_fn=surrogate_fn,
+                beta=surrogate_beta,
             )
         else:
             return izhikevich_step(neuron_state, params, I_total, dt)
@@ -320,12 +362,18 @@ def _simulate_no_delays(
 
             # Phase 2: dual-exponential receptors
             new_nmda_rise, new_nmda_decay, _ = nmda_step(
-                s_state.g_nmda_rise, s_state.g_nmda_decay,
-                scale, w_exc, dt,
+                s_state.g_nmda_rise,
+                s_state.g_nmda_decay,
+                scale,
+                w_exc,
+                dt,
             )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
-                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                scale, W_inh, dt,
+                s_state.g_gaba_b_rise,
+                s_state.g_gaba_b_decay,
+                scale,
+                W_inh,
+                dt,
             )
 
             s_state = SynapseState(
@@ -349,6 +397,7 @@ def _simulate_no_delays(
 
         final_neuron_state, final_syn_state, final_stdp_state, final_W_exc, _ = final_carry
     else:
+
         def _step_fn(carry, I_t):
             neuron_state, s_state, s_stdp, w_exc = carry
 
@@ -370,12 +419,18 @@ def _simulate_no_delays(
 
             # Phase 2: dual-exponential receptors
             new_nmda_rise, new_nmda_decay, _ = nmda_step(
-                s_state.g_nmda_rise, s_state.g_nmda_decay,
-                spikes_f, w_exc, dt,
+                s_state.g_nmda_rise,
+                s_state.g_nmda_decay,
+                spikes_f,
+                w_exc,
+                dt,
             )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
-                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                spikes_f, W_inh, dt,
+                s_state.g_gaba_b_rise,
+                s_state.g_gaba_b_decay,
+                spikes_f,
+                W_inh,
+                dt,
             )
 
             s_state = SynapseState(
@@ -412,9 +467,17 @@ def _simulate_no_delays(
 # Path 1b: fast sparse — segment_sum instead of BCOO matmul (no delays)
 # =========================================================================
 
+
 def _simulate_no_delays_fast_sparse(
-    params, init_state, syn_state, stdp_state,
-    W_exc, W_inh, I_external, dt, plasticity_fn,
+    params,
+    init_state,
+    syn_state,
+    stdp_state,
+    W_exc,
+    W_inh,
+    I_external,
+    dt,
+    plasticity_fn,
     stp_params=None,
 ) -> SimulationResult:
     """Simulation loop using fast_sparse_input instead of BCOO matmul.
@@ -458,22 +521,41 @@ def _simulate_no_delays_fast_sparse(
 
                 # Phase 1
                 new_g_ampa = ampa_step_fast(
-                    s_state.g_ampa, scale, exc_data, exc_rows, exc_cols, N, dt)
+                    s_state.g_ampa, scale, exc_data, exc_rows, exc_cols, N, dt
+                )
                 new_g_gaba_a = gaba_a_step_fast(
-                    s_state.g_gaba_a, scale, inh_data, inh_rows, inh_cols, N, dt)
+                    s_state.g_gaba_a, scale, inh_data, inh_rows, inh_cols, N, dt
+                )
 
                 # Phase 2
                 new_nmda_rise, new_nmda_decay, _ = nmda_step_fast(
-                    s_state.g_nmda_rise, s_state.g_nmda_decay,
-                    scale, exc_data, exc_rows, exc_cols, N, dt)
+                    s_state.g_nmda_rise,
+                    s_state.g_nmda_decay,
+                    scale,
+                    exc_data,
+                    exc_rows,
+                    exc_cols,
+                    N,
+                    dt,
+                )
                 new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
-                    s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                    scale, inh_data, inh_rows, inh_cols, N, dt)
+                    s_state.g_gaba_b_rise,
+                    s_state.g_gaba_b_decay,
+                    scale,
+                    inh_data,
+                    inh_rows,
+                    inh_cols,
+                    N,
+                    dt,
+                )
 
                 s_state = SynapseState(
-                    g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
-                    g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
-                    g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                    g_ampa=new_g_ampa,
+                    g_gaba_a=new_g_gaba_a,
+                    g_nmda_rise=new_nmda_rise,
+                    g_nmda_decay=new_nmda_decay,
+                    g_gaba_b_rise=new_gaba_b_rise,
+                    g_gaba_b_decay=new_gaba_b_decay,
                 )
 
                 new_carry = (neuron_state, s_state, s_stdp, w_exc, stp_st)
@@ -497,19 +579,30 @@ def _simulate_no_delays_fast_sparse(
                 # Use BCOO for exc (plasticity may change it), fast for inh
                 new_g_ampa = ampa_step(s_state.g_ampa, scale, w_exc, dt)
                 new_g_gaba_a = gaba_a_step_fast(
-                    s_state.g_gaba_a, scale, inh_data, inh_rows, inh_cols, N, dt)
+                    s_state.g_gaba_a, scale, inh_data, inh_rows, inh_cols, N, dt
+                )
 
                 new_nmda_rise, new_nmda_decay, _ = nmda_step(
-                    s_state.g_nmda_rise, s_state.g_nmda_decay,
-                    scale, w_exc, dt)
+                    s_state.g_nmda_rise, s_state.g_nmda_decay, scale, w_exc, dt
+                )
                 new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
-                    s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                    scale, inh_data, inh_rows, inh_cols, N, dt)
+                    s_state.g_gaba_b_rise,
+                    s_state.g_gaba_b_decay,
+                    scale,
+                    inh_data,
+                    inh_rows,
+                    inh_cols,
+                    N,
+                    dt,
+                )
 
                 s_state = SynapseState(
-                    g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
-                    g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
-                    g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                    g_ampa=new_g_ampa,
+                    g_gaba_a=new_g_gaba_a,
+                    g_nmda_rise=new_nmda_rise,
+                    g_nmda_decay=new_nmda_decay,
+                    g_gaba_b_rise=new_gaba_b_rise,
+                    g_gaba_b_decay=new_gaba_b_decay,
                 )
 
                 s_stdp, w_exc = plasticity_fn(s_stdp, neuron_state.spikes, w_exc)
@@ -537,22 +630,41 @@ def _simulate_no_delays_fast_sparse(
 
             # Phase 1
             new_g_ampa = ampa_step_fast(
-                s_state.g_ampa, spikes_f, exc_data, exc_rows, exc_cols, N, dt)
+                s_state.g_ampa, spikes_f, exc_data, exc_rows, exc_cols, N, dt
+            )
             new_g_gaba_a = gaba_a_step_fast(
-                s_state.g_gaba_a, spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+                s_state.g_gaba_a, spikes_f, inh_data, inh_rows, inh_cols, N, dt
+            )
 
             # Phase 2
             new_nmda_rise, new_nmda_decay, _ = nmda_step_fast(
-                s_state.g_nmda_rise, s_state.g_nmda_decay,
-                spikes_f, exc_data, exc_rows, exc_cols, N, dt)
+                s_state.g_nmda_rise,
+                s_state.g_nmda_decay,
+                spikes_f,
+                exc_data,
+                exc_rows,
+                exc_cols,
+                N,
+                dt,
+            )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
-                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+                s_state.g_gaba_b_rise,
+                s_state.g_gaba_b_decay,
+                spikes_f,
+                inh_data,
+                inh_rows,
+                inh_cols,
+                N,
+                dt,
+            )
 
             s_state = SynapseState(
-                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
-                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
-                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
             )
 
             new_carry = (neuron_state, s_state, s_stdp, w_exc)
@@ -576,19 +688,30 @@ def _simulate_no_delays_fast_sparse(
             # Use BCOO for exc (plasticity may change it), fast for inh
             new_g_ampa = ampa_step(s_state.g_ampa, spikes_f, w_exc, dt)
             new_g_gaba_a = gaba_a_step_fast(
-                s_state.g_gaba_a, spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+                s_state.g_gaba_a, spikes_f, inh_data, inh_rows, inh_cols, N, dt
+            )
 
             new_nmda_rise, new_nmda_decay, _ = nmda_step(
-                s_state.g_nmda_rise, s_state.g_nmda_decay,
-                spikes_f, w_exc, dt)
+                s_state.g_nmda_rise, s_state.g_nmda_decay, spikes_f, w_exc, dt
+            )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_fast(
-                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                spikes_f, inh_data, inh_rows, inh_cols, N, dt)
+                s_state.g_gaba_b_rise,
+                s_state.g_gaba_b_decay,
+                spikes_f,
+                inh_data,
+                inh_rows,
+                inh_cols,
+                N,
+                dt,
+            )
 
             s_state = SynapseState(
-                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
-                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
-                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
             )
 
             s_stdp, w_exc = plasticity_fn(s_stdp, neuron_state.spikes, w_exc)
@@ -613,10 +736,19 @@ def _simulate_no_delays_fast_sparse(
 # Path 1c: event-driven — CSC format, only active synapses (no delays)
 # =========================================================================
 
+
 def _simulate_no_delays_event_driven(
-    params, init_state, syn_state, stdp_state,
-    W_exc, W_inh, I_external, dt, plasticity_fn,
-    stp_params=None, max_active=5000,
+    params,
+    init_state,
+    syn_state,
+    stdp_state,
+    W_exc,
+    W_inh,
+    I_external,
+    dt,
+    plasticity_fn,
+    stp_params=None,
+    max_active=5000,
 ) -> SimulationResult:
     """Simulation loop using event-driven CSC sparse kernel.
 
@@ -657,23 +789,24 @@ def _simulate_no_delays_event_driven(
             stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
 
             # Phase 1
-            new_g_ampa = ampa_step_event(
-                s_state.g_ampa, scale, csc_exc, max_active, dt)
-            new_g_gaba_a = gaba_a_step_event(
-                s_state.g_gaba_a, scale, csc_inh, max_active, dt)
+            new_g_ampa = ampa_step_event(s_state.g_ampa, scale, csc_exc, max_active, dt)
+            new_g_gaba_a = gaba_a_step_event(s_state.g_gaba_a, scale, csc_inh, max_active, dt)
 
             # Phase 2
             new_nmda_rise, new_nmda_decay, _ = nmda_step_event(
-                s_state.g_nmda_rise, s_state.g_nmda_decay,
-                scale, csc_exc, max_active, dt)
+                s_state.g_nmda_rise, s_state.g_nmda_decay, scale, csc_exc, max_active, dt
+            )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_event(
-                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                scale, csc_inh, max_active, dt)
+                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay, scale, csc_inh, max_active, dt
+            )
 
             s_state = SynapseState(
-                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
-                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
-                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
             )
 
             new_carry = (neuron_state, s_state, s_stdp, w_exc, stp_st)
@@ -695,23 +828,24 @@ def _simulate_no_delays_event_driven(
             spikes_f = neuron_state.spikes.astype(jnp.float32)
 
             # Phase 1
-            new_g_ampa = ampa_step_event(
-                s_state.g_ampa, spikes_f, csc_exc, max_active, dt)
-            new_g_gaba_a = gaba_a_step_event(
-                s_state.g_gaba_a, spikes_f, csc_inh, max_active, dt)
+            new_g_ampa = ampa_step_event(s_state.g_ampa, spikes_f, csc_exc, max_active, dt)
+            new_g_gaba_a = gaba_a_step_event(s_state.g_gaba_a, spikes_f, csc_inh, max_active, dt)
 
             # Phase 2
             new_nmda_rise, new_nmda_decay, _ = nmda_step_event(
-                s_state.g_nmda_rise, s_state.g_nmda_decay,
-                spikes_f, csc_exc, max_active, dt)
+                s_state.g_nmda_rise, s_state.g_nmda_decay, spikes_f, csc_exc, max_active, dt
+            )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step_event(
-                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay,
-                spikes_f, csc_inh, max_active, dt)
+                s_state.g_gaba_b_rise, s_state.g_gaba_b_decay, spikes_f, csc_inh, max_active, dt
+            )
 
             s_state = SynapseState(
-                g_ampa=new_g_ampa, g_gaba_a=new_g_gaba_a,
-                g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
-                g_gaba_b_rise=new_gaba_b_rise, g_gaba_b_decay=new_gaba_b_decay,
+                g_ampa=new_g_ampa,
+                g_gaba_a=new_g_gaba_a,
+                g_nmda_rise=new_nmda_rise,
+                g_nmda_decay=new_nmda_decay,
+                g_gaba_b_rise=new_gaba_b_rise,
+                g_gaba_b_decay=new_gaba_b_decay,
             )
 
             new_carry = (neuron_state, s_state, s_stdp, w_exc)
@@ -734,10 +868,20 @@ def _simulate_no_delays_event_driven(
 # Path 2: delayed spike transmission via ring buffer
 # =========================================================================
 
+
 def _simulate_with_delays(
-    params, init_state, syn_state, stdp_state,
-    W_exc, W_inh, I_external, dt, plasticity_fn,
-    W_exc_delays, W_inh_delays, max_delay,
+    params,
+    init_state,
+    syn_state,
+    stdp_state,
+    W_exc,
+    W_inh,
+    I_external,
+    dt,
+    plasticity_fn,
+    W_exc_delays,
+    W_inh_delays,
+    max_delay,
     stp_params=None,
 ) -> SimulationResult:
     """Simulation loop with axonal conduction delays.
@@ -796,18 +940,15 @@ def _simulate_with_delays(
 
             # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
             new_nmda_rise = (
-                s_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
-                + g_input_exc * _NMDA_NORM
+                s_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE) + g_input_exc * _NMDA_NORM
             )
             new_nmda_decay = (
-                s_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
-                + g_input_exc * _NMDA_NORM
+                s_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY) + g_input_exc * _NMDA_NORM
             )
 
             # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
             new_gaba_b_rise = (
-                s_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
-                + g_input_inh * _GABA_B_NORM
+                s_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE) + g_input_inh * _GABA_B_NORM
             )
             new_gaba_b_decay = (
                 s_state.g_gaba_b_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
@@ -835,6 +976,7 @@ def _simulate_with_delays(
 
         final_neuron_state, final_syn_state, final_stdp_state, final_W_exc, _, _ = final_carry
     else:
+
         def _step_fn(carry, I_t):
             neuron_state, s_state, s_stdp, w_exc, delay_buf = carry
 
@@ -861,18 +1003,15 @@ def _simulate_with_delays(
 
             # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
             new_nmda_rise = (
-                s_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
-                + g_input_exc * _NMDA_NORM
+                s_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE) + g_input_exc * _NMDA_NORM
             )
             new_nmda_decay = (
-                s_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
-                + g_input_exc * _NMDA_NORM
+                s_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY) + g_input_exc * _NMDA_NORM
             )
 
             # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
             new_gaba_b_rise = (
-                s_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE)
-                + g_input_inh * _GABA_B_NORM
+                s_state.g_gaba_b_rise * jnp.exp(-dt / TAU_GABA_B_RISE) + g_input_inh * _GABA_B_NORM
             )
             new_gaba_b_decay = (
                 s_state.g_gaba_b_decay * jnp.exp(-dt / TAU_GABA_B_DECAY)
@@ -913,8 +1052,16 @@ def _simulate_with_delays(
 # pass ``plasticity_fn=None`` (the default) can call this directly; those
 # who supply a plasticity callback should jit the outer call themselves
 # (or rely on tracing through ``simulate`` inside their own jitted code).
-simulate_jit = jax.jit(simulate, static_argnames=(
-    "dt", "plasticity_fn", "use_fast_sparse",
-    "use_event_driven", "max_active",
-    "surrogate", "surrogate_fn", "surrogate_beta",
-))
+simulate_jit = jax.jit(
+    simulate,
+    static_argnames=(
+        "dt",
+        "plasticity_fn",
+        "use_fast_sparse",
+        "use_event_driven",
+        "max_active",
+        "surrogate",
+        "surrogate_fn",
+        "surrogate_beta",
+    ),
+)

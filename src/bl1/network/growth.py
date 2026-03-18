@@ -28,30 +28,30 @@ class GrowthParams(NamedTuple):
     """Parameters controlling network growth trajectory."""
 
     # Connection probability envelope
-    p_max_initial: float = 0.01       # Initial max connection prob (DIV 1)
-    p_max_mature: float = 0.21        # Mature max connection prob (DIV 28)
+    p_max_initial: float = 0.01  # Initial max connection prob (DIV 1)
+    p_max_mature: float = 0.21  # Mature max connection prob (DIV 28)
     lambda_initial_um: float = 100.0  # Initial length constant (short range)
-    lambda_mature_um: float = 200.0   # Mature length constant
+    lambda_mature_um: float = 200.0  # Mature length constant
 
     # Growth rate
-    growth_rate: float = 0.15         # Logistic growth rate per DIV
-    midpoint_div: float = 10.0        # Midpoint of connectivity growth curve
+    growth_rate: float = 0.15  # Logistic growth rate per DIV
+    midpoint_div: float = 10.0  # Midpoint of connectivity growth curve
 
     # Weights
-    g_exc_mature: float = 0.05        # Mature excitatory weight
-    g_inh_mature: float = 0.20        # Mature inhibitory weight
+    g_exc_mature: float = 0.05  # Mature excitatory weight
+    g_inh_mature: float = 0.20  # Mature inhibitory weight
 
     # Network refinement (DIV 14+)
-    hub_fraction: float = 0.2         # Fraction of neurons that become hubs
-    hub_weight_boost: float = 2.0     # Weight multiplier for hub connections
+    hub_fraction: float = 0.2  # Fraction of neurons that become hubs
+    hub_weight_boost: float = 2.0  # Weight multiplier for hub connections
 
 
 class GrowthState(NamedTuple):
     """State of the growing network at a particular DIV."""
 
-    div: float                    # Current days in vitro
-    W_exc: Array                  # Current excitatory weights
-    W_inh: Array                  # Current inhibitory weights
+    div: float  # Current days in vitro
+    W_exc: Array  # Current excitatory weights
+    W_inh: Array  # Current inhibitory weights
     connectivity_fraction: float  # Current fraction of possible connections
 
 
@@ -59,9 +59,11 @@ def init_growth(
     key: Array,
     positions: Array,
     is_excitatory: Array,
-    params: GrowthParams = GrowthParams(),
+    params: GrowthParams | None = None,
 ) -> GrowthState:
     """Initialize a growth state at DIV 0 with no connections."""
+    if params is None:
+        params = GrowthParams()
     N = positions.shape[0]
     W_exc = jnp.zeros((N, N))
     W_inh = jnp.zeros((N, N))
@@ -78,7 +80,7 @@ def grow_to_div(
     positions: Array,
     is_excitatory: Array,
     target_div: float,
-    params: GrowthParams = GrowthParams(),
+    params: GrowthParams | None = None,
     current_state: GrowthState | None = None,
 ) -> GrowthState:
     """Grow the network to the specified DIV.
@@ -97,6 +99,8 @@ def grow_to_div(
     Returns:
         GrowthState at the target DIV
     """
+    if params is None:
+        params = GrowthParams()
     # Move to numpy for efficient connectivity construction
     pos_np = np.asarray(positions)
     is_exc_np = np.asarray(is_excitatory).astype(bool)
@@ -113,7 +117,7 @@ def grow_to_div(
 
     # --- Pairwise distances (N, N) ----------------------------------------
     diff = pos_np[:, None, :] - pos_np[None, :, :]
-    dist = np.sqrt(np.sum(diff ** 2, axis=-1))
+    dist = np.sqrt(np.sum(diff**2, axis=-1))
 
     # --- Connection probabilities -----------------------------------------
     prob = p_max * np.exp(-dist / lambda_um)
@@ -126,7 +130,7 @@ def grow_to_div(
     connected = rng.random((N, N)) < prob
 
     # --- Split into E / I masks -------------------------------------------
-    exc_mask = connected & is_exc_np[:, None]   # pre-synaptic is excitatory
+    exc_mask = connected & is_exc_np[:, None]  # pre-synaptic is excitatory
     inh_mask = connected & (~is_exc_np)[:, None]  # pre-synaptic is inhibitory
 
     # --- Weights with +/-10% uniform noise --------------------------------
@@ -168,7 +172,7 @@ def mature_network(
     is_excitatory: Array,
     target_div: float = 28.0,
     accelerated: bool = True,
-    params: GrowthParams = GrowthParams(),
+    params: GrowthParams | None = None,
 ) -> tuple[Array, Array]:
     """Convenience: grow network and return (W_exc, W_inh) ready for simulation.
 
@@ -183,5 +187,7 @@ def mature_network(
     Returns:
         (W_exc, W_inh) dense weight matrices as JAX arrays
     """
+    if params is None:
+        params = GrowthParams()
     state = grow_to_div(key, positions, is_excitatory, target_div, params)
     return state.W_exc, state.W_inh

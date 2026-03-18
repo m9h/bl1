@@ -29,15 +29,16 @@ if TYPE_CHECKING:
 # Constants
 # ---------------------------------------------------------------------------
 
-STIM_AMPLITUDE_MV: float = 150.0   # Standard stimulation amplitude (mV)
-FREQ_MIN_HZ: float = 4.0           # Stimulation freq when ball is far
-FREQ_MAX_HZ: float = 40.0          # Stimulation freq when ball is close
-N_SENSORY_CHANNELS: int = 8        # Number of sensory electrode channels
+STIM_AMPLITUDE_MV: float = 150.0  # Standard stimulation amplitude (mV)
+FREQ_MIN_HZ: float = 4.0  # Stimulation freq when ball is far
+FREQ_MAX_HZ: float = 40.0  # Stimulation freq when ball is close
+N_SENSORY_CHANNELS: int = 8  # Number of sensory electrode channels
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _place_code(ball_y: float, n_channels: int = N_SENSORY_CHANNELS) -> list[int]:
     """Map ball Y position (0-1 normalised) to active channel indices.
@@ -95,6 +96,7 @@ def _rate_code_frequency(ball_x: float) -> float:
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def encode_sensory(
     game_state,
     mea_config: MEAConfig,
@@ -133,8 +135,7 @@ def encode_sensory(
     """
     if len(sensory_channels) != N_SENSORY_CHANNELS:
         raise ValueError(
-            f"Expected {N_SENSORY_CHANNELS} sensory channels, "
-            f"got {len(sensory_channels)}"
+            f"Expected {N_SENSORY_CHANNELS} sensory channels, got {len(sensory_channels)}"
         )
 
     # --- Place coding: which channels are active? --------------------------

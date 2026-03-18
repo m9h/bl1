@@ -28,8 +28,8 @@ from bl1.compat.cl_sdk import BurstDesign, ChannelSet, Neurons, StimDesign
 
 # Protocol constants (must match doom-neuron/udp_protocol.py)
 NUM_CHANNEL_SETS = 8
-STIM_PACKET_SIZE = 8 + (NUM_CHANNEL_SETS * 2 * 4)   # 72
-SPIKE_PACKET_SIZE = 8 + (NUM_CHANNEL_SETS * 4)        # 40
+STIM_PACKET_SIZE = 8 + (NUM_CHANNEL_SETS * 2 * 4)  # 72
+SPIKE_PACKET_SIZE = 8 + (NUM_CHANNEL_SETS * 4)  # 40
 FEEDBACK_PACKET_SIZE = 120
 
 STIM_FORMAT = "<Q" + ("f" * NUM_CHANNEL_SETS * 2)
@@ -51,6 +51,7 @@ CHANNEL_GROUPS = [
 # ---------------------------------------------------------------------------
 # Packet helpers
 # ---------------------------------------------------------------------------
+
 
 def pack_spike_data(spike_counts: np.ndarray) -> bytes:
     """Pack spike counts into a 40-byte UDP packet."""
@@ -86,12 +87,22 @@ def unpack_feedback_command(packet: bytes):
     event_name = event_name_bytes.rstrip(b"\x00").decode("utf-8")
     unpredictable = unpredictable_byte != 0
 
-    return timestamp, feedback_type, channels, frequency, amplitude, pulses, unpredictable, event_name
+    return (
+        timestamp,
+        feedback_type,
+        channels,
+        frequency,
+        amplitude,
+        pulses,
+        unpredictable,
+        event_name,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Virtual CL1 Server
 # ---------------------------------------------------------------------------
+
 
 class VirtualCL1Server:
     """A virtual CL1 server backed by BL-1's simulated culture.
@@ -235,6 +246,7 @@ class VirtualCL1Server:
                 try:
                     evt_pkt, _ = event_sock.recvfrom(4096)
                     import json
+
                     hdr = struct.unpack("<QI", evt_pkt[:12])
                     data = json.loads(evt_pkt[12 : 12 + hdr[1]])
                     if data.get("event_type") == "training_complete":

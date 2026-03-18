@@ -91,8 +91,14 @@ def parameter_sensitivity(
     def simulate_and_measure(params):
         """Inner function that runs simulation and computes metric."""
         result = simulate(
-            params, state, syn_state, None,
-            W_exc, W_inh, I_external, dt=dt,
+            params,
+            state,
+            syn_state,
+            None,
+            W_exc,
+            W_inh,
+            I_external,
+            dt=dt,
             surrogate=True,
             surrogate_fn=surrogate_fn,
             surrogate_beta=beta,
@@ -194,8 +200,14 @@ def fit_parameters(
 
     def loss_fn(params):
         result = simulate(
-            params, state, syn_state, None,
-            W_exc, W_inh, I_external, dt=dt,
+            params,
+            state,
+            syn_state,
+            None,
+            W_exc,
+            W_inh,
+            I_external,
+            dt=dt,
             surrogate=True,
             surrogate_fn=surrogate_fn,
             surrogate_beta=beta,
@@ -260,6 +272,4 @@ def temporal_sparseness(spike_history: Array) -> Array:
     mean_rate = jnp.mean(rates)
     mean_sq_rate = jnp.mean(rates**2)
     # Treves-Rolls sparseness
-    return (1.0 - (mean_rate**2) / jnp.maximum(mean_sq_rate, 1e-10)) / (
-        1.0 - 1.0 / N
-    )
+    return (1.0 - (mean_rate**2) / jnp.maximum(mean_sq_rate, 1e-10)) / (1.0 - 1.0 / N)

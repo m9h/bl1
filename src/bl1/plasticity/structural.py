@@ -36,20 +36,23 @@ from jax import Array
 # Parameter container
 # ---------------------------------------------------------------------------
 
+
 class StructuralPlasticityParams(NamedTuple):
     """Parameters for structural plasticity."""
-    prune_threshold: float = 0.001     # Weights below this are candidates for pruning
-    prune_prob: float = 0.1            # Probability of pruning an eligible synapse per update
-    growth_prob: float = 0.01          # Probability of forming a new synapse between active pair
-    activity_threshold: float = 0.1    # Minimum activity level (spikes/s) for growth candidate
-    max_distance_um: float = 500.0     # Maximum distance for new synapse formation
+
+    prune_threshold: float = 0.001  # Weights below this are candidates for pruning
+    prune_prob: float = 0.1  # Probability of pruning an eligible synapse per update
+    growth_prob: float = 0.01  # Probability of forming a new synapse between active pair
+    activity_threshold: float = 0.1  # Minimum activity level (spikes/s) for growth candidate
+    max_distance_um: float = 500.0  # Maximum distance for new synapse formation
     target_synapse_fraction: float = 0.05  # Target fraction of possible synapses that exist
-    w_new: float = 0.01               # Weight of newly formed synapses
+    w_new: float = 0.01  # Weight of newly formed synapses
 
 
 # ---------------------------------------------------------------------------
 # Structural plasticity update
 # ---------------------------------------------------------------------------
+
 
 def structural_update(
     key: Array,
@@ -57,7 +60,7 @@ def structural_update(
     positions: Array,
     is_excitatory: Array,
     rate_estimates: Array,
-    params: StructuralPlasticityParams = StructuralPlasticityParams(),
+    params: StructuralPlasticityParams | None = None,
 ) -> Array:
     """Apply one round of structural plasticity to excitatory weights.
 
@@ -75,6 +78,8 @@ def structural_update(
     Returns:
         Updated W_exc with pruned and newly formed synapses
     """
+    if params is None:
+        params = StructuralPlasticityParams()
     # Move everything to numpy for sparsity-pattern manipulation.
     W = np.array(W_exc, dtype=np.float64)
     pos = np.array(positions, dtype=np.float64)
@@ -141,20 +146,17 @@ def structural_update(
 
     # Distance matrix
     diff = pos[:, np.newaxis, :] - pos[np.newaxis, :, :]  # (N, N, 2)
-    dist = np.sqrt(np.sum(diff ** 2, axis=-1))  # (N, N)
+    dist = np.sqrt(np.sum(diff**2, axis=-1))  # (N, N)
 
     # Build eligibility mask for growth.
     no_conn = W == 0.0
-    pre_is_exc = is_exc[np.newaxis, :]           # (1, N) — column = pre
+    pre_is_exc = is_exc[np.newaxis, :]  # (1, N) — column = pre
     pre_active = (rates > params.activity_threshold)[np.newaxis, :]  # (1, N)
     post_active = (rates > params.activity_threshold)[:, np.newaxis]  # (N, 1)
     within_dist = dist <= params.max_distance_um
     not_self = ~np.eye(N, dtype=bool)
 
-    growth_eligible = (
-        no_conn & pre_is_exc & pre_active & post_active
-        & within_dist & not_self
-    )
+    growth_eligible = no_conn & pre_is_exc & pre_active & post_active & within_dist & not_self
 
     if np.any(growth_eligible):
         eligible_indices = np.argwhere(growth_eligible)  # (M, 2)

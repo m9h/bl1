@@ -18,6 +18,8 @@ from typing import NamedTuple
 from jax import Array
 from jax.experimental.sparse import BCOO
 
+from bl1.core.synapses import SynapseState
+
 
 class DrugEffect(NamedTuple):
     """Description of a pharmacological manipulation."""
@@ -72,6 +74,7 @@ CNQX = DrugEffect(
 # ---------------------------------------------------------------------------
 # Weight matrix manipulation
 # ---------------------------------------------------------------------------
+
 
 def _scale_matrix(mat: Array | BCOO, scale: float) -> Array | BCOO:
     """Scale a weight matrix (dense or BCOO sparse) by a scalar factor.

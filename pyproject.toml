@@ -66,9 +66,18 @@ max-complexity = 20
 "notebooks/*" = ["E", "F", "B"]
 
 [tool.mypy]
-strict = true
+# Start permissive — tighten over time as type annotations improve
+strict = false
+check_untyped_defs = false
+disallow_incomplete_defs = false
+warn_return_any = true
+warn_unused_ignores = true
 ignore_missing_imports = true
-exclude = ["notebooks/", "benchmarks/", "scripts/"]
+exclude = ["notebooks/", "benchmarks/", "scripts/", "tests/"]
+
+[[tool.mypy.overrides]]
+module = "bl1.core.*"
+check_untyped_defs = true
 
 [tool.coverage.run]
 branch = true

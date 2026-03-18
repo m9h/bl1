@@ -61,7 +61,11 @@ def plot_avalanche_distributions(
                 bins = np.linspace(s_min * 0.9, s_max * 1.1, 10)
 
             ax_size.hist(
-                sizes, bins=bins, density=True, alpha=0.7, color=BLUE_LIGHT,
+                sizes,
+                bins=bins,
+                density=True,
+                alpha=0.7,
+                color=BLUE_LIGHT,
                 edgecolor="white",
             )
 
@@ -69,7 +73,7 @@ def plot_avalanche_distributions(
             if s_max > s_min and len(bins) > 2:
                 s_ref = np.logspace(np.log10(bins[1]), np.log10(bins[-2]), 50)
                 # Normalise reference line to pass through the data range
-                scale = (s_ref[0] ** 1.5)  # anchor at left end
+                scale = s_ref[0] ** 1.5  # anchor at left end
                 ax_size.plot(
                     s_ref,
                     scale * s_ref ** (-1.5),
@@ -96,14 +100,18 @@ def plot_avalanche_distributions(
                 bins_d = np.linspace(d_min * 0.9, d_max * 1.1, 10)
 
             ax_dur.hist(
-                durations, bins=bins_d, density=True, alpha=0.7, color=RED_LIGHT,
+                durations,
+                bins=bins_d,
+                density=True,
+                alpha=0.7,
+                color=RED_LIGHT,
                 edgecolor="white",
             )
 
             # Reference power law: P(d) ~ d^{-2.0}
             if d_max > d_min and len(bins_d) > 2:
                 d_ref = np.logspace(np.log10(bins_d[1]), np.log10(bins_d[-2]), 50)
-                scale_d = (d_ref[0] ** 2.0)
+                scale_d = d_ref[0] ** 2.0
                 ax_dur.plot(
                     d_ref,
                     scale_d * d_ref ** (-2.0),

@@ -59,9 +59,7 @@ def plot_population_rate(
             if smoothing_ms > 0:
                 sigma_bins = smoothing_ms / bin_ms
                 rate_smooth = gaussian_filter1d(rate_hz, sigma=sigma_bins)
-                ax.fill_between(
-                    bin_times, rate_hz, alpha=0.3, color=BLUE_LIGHT, label="Raw"
-                )
+                ax.fill_between(bin_times, rate_hz, alpha=0.3, color=BLUE_LIGHT, label="Raw")
                 ax.plot(bin_times, rate_smooth, color=BLUE_LIGHT, lw=1.5, label="Smoothed")
                 ax.legend(framealpha=0.8)
             else:

@@ -18,6 +18,7 @@ from jax import Array
 # Current injection
 # ---------------------------------------------------------------------------
 
+
 @jax.jit
 def apply_stimulation(
     neuron_positions: Array,
@@ -49,7 +50,7 @@ def apply_stimulation(
     """
     # Pairwise distances: (E, N)
     diff = electrode_positions[:, None, :] - neuron_positions[None, :, :]  # (E, N, 2)
-    dist = jnp.sqrt(jnp.sum(diff ** 2, axis=-1))  # (E, N)
+    dist = jnp.sqrt(jnp.sum(diff**2, axis=-1))  # (E, N)
 
     # Linear falloff: I = amplitude * max(0, 1 - d / radius)
     attenuation = jnp.clip(1.0 - dist / activation_radius_um, 0.0, 1.0)  # (E, N)
@@ -66,6 +67,7 @@ def apply_stimulation(
 # ---------------------------------------------------------------------------
 # Feedback stimulation patterns
 # ---------------------------------------------------------------------------
+
 
 def generate_feedback_stim(
     feedback_type: Literal["predictable", "unpredictable", "none"],

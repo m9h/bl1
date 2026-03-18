@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 # Rally length extraction
 # ---------------------------------------------------------------------------
 
+
 def rally_length(game_events: list[tuple[float, str]]) -> NDArray:
     """Extract rally lengths from a game event log.
 
@@ -53,6 +54,7 @@ def rally_length(game_events: list[tuple[float, str]]) -> NDArray:
 # ---------------------------------------------------------------------------
 # Performance comparison
 # ---------------------------------------------------------------------------
+
 
 def performance_comparison(
     results_dict: dict[str, Any],
@@ -119,7 +121,7 @@ def performance_comparison(
         from scipy.stats import mannwhitneyu
 
         for i, cond_a in enumerate(condition_names):
-            for cond_b in condition_names[i + 1:]:
+            for cond_b in condition_names[i + 1 :]:
                 ra = rallies[cond_a]
                 rb = rallies[cond_b]
                 if len(ra) >= 2 and len(rb) >= 2:

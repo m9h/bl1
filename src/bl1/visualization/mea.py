@@ -55,7 +55,7 @@ def plot_mea_heatmap(
 
     # Use the last window_ms of the recording
     window_steps = min(max(int(window_ms / dt_ms), 1), T)
-    windowed = raster[T - window_steps:]
+    windowed = raster[T - window_steps :]
 
     # Total spikes per neuron in window
     spikes_per_neuron = windowed.sum(axis=0)  # (N,)

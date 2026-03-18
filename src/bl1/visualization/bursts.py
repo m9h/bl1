@@ -64,7 +64,7 @@ def plot_burst_overlay(
             ax.fill_between(bin_times, rate_hz, alpha=0.6, color=BLUE_LIGHT, label="Pop. Rate")
 
         # Overlay burst intervals
-        for i, (start, end, _n_spk, frac) in enumerate(bursts):
+        for i, (start, end, _n_spk, _frac) in enumerate(bursts):
             label = "Burst" if i == 0 else None
             ax.axvspan(start, end, alpha=0.25, color=RED_LIGHT, label=label)
 

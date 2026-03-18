@@ -13,9 +13,17 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
+from bl1.network.topology import (
+    build_connectivity,
+    place_neurons,
+    place_neurons_layered,
+    place_neurons_spheroid,
+)
+
 # ---------------------------------------------------------------------------
 # Static network parameters (immutable across a simulation run)
 # ---------------------------------------------------------------------------
+
 
 class NetworkParams(NamedTuple):
     """Static (non-plastic) network parameters."""
@@ -40,6 +48,7 @@ class NetworkParams(NamedTuple):
 # ---------------------------------------------------------------------------
 # Mutable culture state (updated every timestep)
 # ---------------------------------------------------------------------------
+
 
 class CultureState(NamedTuple):
     """Full mutable state of a simulated cortical culture."""
@@ -85,6 +94,7 @@ try:
         IzhikevichParams,
         create_population,
     )
+
     _HAS_CORE = True
 except ImportError:
     _HAS_CORE = False
@@ -123,17 +133,19 @@ except ImportError:
         Returns (params, state, is_excitatory).
         """
         n_exc = int(n_neurons * ei_ratio)
-        is_exc = jnp.concatenate([
-            jnp.ones(n_exc, dtype=jnp.bool_),
-            jnp.zeros(n_neurons - n_exc, dtype=jnp.bool_),
-        ])
+        is_exc = jnp.concatenate(
+            [
+                jnp.ones(n_exc, dtype=jnp.bool_),
+                jnp.zeros(n_neurons - n_exc, dtype=jnp.bool_),
+            ]
+        )
 
         key_a, key_b = jax.random.split(key)
         r_exc = jax.random.uniform(key_a, (n_exc,))
         a_exc = 0.02 * jnp.ones(n_exc)
         b_exc = 0.2 * jnp.ones(n_exc)
-        c_exc = -65.0 + 15.0 * r_exc ** 2
-        d_exc = 8.0 - 6.0 * r_exc ** 2
+        c_exc = -65.0 + 15.0 * r_exc**2
+        d_exc = 8.0 - 6.0 * r_exc**2
 
         n_inh = n_neurons - n_exc
         r_inh = jax.random.uniform(key_b, (n_inh,))
@@ -150,20 +162,15 @@ except ImportError:
         )
         b_all = params.b
         v0 = -65.0 * jnp.ones(n_neurons)
-        state = _FallbackNeuronState(v=v0, u=b_all * v0, spikes=jnp.zeros(n_neurons, dtype=jnp.bool_))
+        state = _FallbackNeuronState(
+            v=v0, u=b_all * v0, spikes=jnp.zeros(n_neurons, dtype=jnp.bool_)
+        )
         return params, state, is_exc
 
 
 # ---------------------------------------------------------------------------
 # High-level culture factory
 # ---------------------------------------------------------------------------
-
-from bl1.network.topology import (
-    build_connectivity,
-    place_neurons,
-    place_neurons_layered,
-    place_neurons_spheroid,
-)
 
 
 @dataclass
@@ -262,11 +269,15 @@ class Culture:
         # 1. Place neurons on the substrate or in a 3D volume
         if placement == "uniform":
             positions = place_neurons(
-                k_place, n_neurons, substrate_um, substrate_3d=substrate_3d,
+                k_place,
+                n_neurons,
+                substrate_um,
+                substrate_3d=substrate_3d,
             )
         elif placement == "spheroid":
             positions = place_neurons_spheroid(
-                k_place, n_neurons,
+                k_place,
+                n_neurons,
                 radius_um=spheroid_radius_um,
                 center_um=spheroid_center_um,
             )
@@ -279,7 +290,9 @@ class Culture:
             if layer_densities is not None:
                 kwargs_layered["layer_densities"] = layer_densities
             positions = place_neurons_layered(
-                k_place, n_neurons, **kwargs_layered,
+                k_place,
+                n_neurons,
+                **kwargs_layered,
             )
         else:
             raise ValueError(

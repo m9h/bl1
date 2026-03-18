@@ -1,4 +1,5 @@
 """Publication-quality visualization tools for BL-1 simulations."""
+
 from bl1.visualization.avalanche import plot_avalanche_distributions
 from bl1.visualization.bursts import plot_burst_overlay, plot_isi_distribution
 from bl1.visualization.mea import plot_mea_activity, plot_mea_heatmap

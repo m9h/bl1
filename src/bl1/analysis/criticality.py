@@ -16,6 +16,7 @@ from numpy.typing import NDArray
 # Spike binning
 # ---------------------------------------------------------------------------
 
+
 def _bin_spikes(
     spike_raster: NDArray,
     dt_ms: float,
@@ -54,6 +55,7 @@ def _bin_spikes(
 # ---------------------------------------------------------------------------
 # Branching ratio
 # ---------------------------------------------------------------------------
+
 
 def branching_ratio(
     spike_raster: NDArray,
@@ -102,6 +104,7 @@ def branching_ratio(
 # ---------------------------------------------------------------------------
 # Avalanche detection
 # ---------------------------------------------------------------------------
+
 
 def avalanche_size_distribution(
     spike_raster: NDArray,

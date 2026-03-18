@@ -186,8 +186,8 @@ class Neurons:
         k1, k2, k3 = jax.random.split(key, 3)
 
         # -- neuron population -----------------------------------------------
-        self._izh_params, self._neuron_state, self._is_excitatory = (
-            create_population(k1, n_neurons, ei_ratio=0.8)
+        self._izh_params, self._neuron_state, self._is_excitatory = create_population(
+            k1, n_neurons, ei_ratio=0.8
         )
 
         # -- spatial layout --------------------------------------------------
@@ -314,16 +314,12 @@ class Neurons:
         I_total = I_syn + I_stim + self._I_ext
 
         # Step neurons
-        self._neuron_state = izhikevich_step(
-            self._neuron_state, self._izh_params, I_total, dt_ms
-        )
+        self._neuron_state = izhikevich_step(self._neuron_state, self._izh_params, I_total, dt_ms)
 
         # Update fast synapses (AMPA / GABA_A)
         spikes_f = self._neuron_state.spikes.astype(jnp.float32)
         new_g_ampa = ampa_step(self._syn_state.g_ampa, spikes_f, self._W_exc, dt_ms)
-        new_g_gaba_a = gaba_a_step(
-            self._syn_state.g_gaba_a, spikes_f, self._W_inh, dt_ms
-        )
+        new_g_gaba_a = gaba_a_step(self._syn_state.g_gaba_a, spikes_f, self._W_inh, dt_ms)
         self._syn_state = SynapseState(
             g_ampa=new_g_ampa,
             g_gaba_a=new_g_gaba_a,
@@ -346,9 +342,7 @@ class Neurons:
             neurons_near = ne_map_np[electrode_idx]
             n_spikes = int(np.sum(spikes_np & neurons_near))
             for _ in range(n_spikes):
-                spike_events.append(
-                    SpikeEvent(channel=electrode_idx, timestamp=self._current_time)
-                )
+                spike_events.append(SpikeEvent(channel=electrode_idx, timestamp=self._current_time))
 
         return spike_events
 

@@ -109,9 +109,7 @@ class Doom:
         tick_frequency_hz: int = 10,
     ):
         if not _VIZDOOM_AVAILABLE:
-            raise ImportError(
-                "VizDoom is not installed. Install with: pip install vizdoom"
-            )
+            raise ImportError("VizDoom is not installed. Install with: pip install vizdoom")
 
         self.config_path = config_path
         self.tick_frequency_hz = tick_frequency_hz
@@ -244,21 +242,15 @@ class Doom:
 
         # Damage taken
         if state.health < self._prev_health:
-            events.append(
-                DoomEvent("took_damage", self._prev_health - state.health)
-            )
+            events.append(DoomEvent("took_damage", self._prev_health - state.health))
 
         # Armor pickup
         if state.armor > self._prev_armor:
-            events.append(
-                DoomEvent("armor_pickup", state.armor - self._prev_armor)
-            )
+            events.append(DoomEvent("armor_pickup", state.armor - self._prev_armor))
 
         # Ammo waste (fired but no kill)
         if state.ammo < self._prev_ammo and state.kill_count == self._prev_kill_count:
-            events.append(
-                DoomEvent("ammo_waste", self._prev_ammo - state.ammo)
-            )
+            events.append(DoomEvent("ammo_waste", self._prev_ammo - state.ammo))
 
         # Update previous state
         self._prev_health = state.health
@@ -281,7 +273,22 @@ class Doom:
         available = self._game.get_available_buttons()
 
         for i, btn in enumerate(available):
-            if btn == Button.MOVE_FORWARD and action.move_forward == 1 or btn == Button.MOVE_BACKWARD and action.move_forward == 2 or btn == Button.MOVE_LEFT and action.strafe == 1 or btn == Button.MOVE_RIGHT and action.strafe == 2 or btn == Button.TURN_LEFT and action.turn == 1 or btn == Button.TURN_RIGHT and action.turn == 2 or btn == Button.ATTACK and action.attack:
+            if (
+                btn == Button.MOVE_FORWARD
+                and action.move_forward == 1
+                or btn == Button.MOVE_BACKWARD
+                and action.move_forward == 2
+                or btn == Button.MOVE_LEFT
+                and action.strafe == 1
+                or btn == Button.MOVE_RIGHT
+                and action.strafe == 2
+                or btn == Button.TURN_LEFT
+                and action.turn == 1
+                or btn == Button.TURN_RIGHT
+                and action.turn == 2
+                or btn == Button.ATTACK
+                and action.attack
+            ):
                 buttons[i] = 1
 
         return buttons

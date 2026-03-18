@@ -93,7 +93,6 @@ DATASETS: dict[str, DatasetInfo] = {
             "acknowledgment of the original publication. ~500 MB total."
         ),
     ),
-
     # ------------------------------------------------------------------
     # 2. Kapucu et al. 2022 -- hPSC-derived + rat comparative dataset
     # ------------------------------------------------------------------
@@ -132,7 +131,6 @@ DATASETS: dict[str, DatasetInfo] = {
             "code also provided."
         ),
     ),
-
     # ------------------------------------------------------------------
     # 3. Beggs & Plenz 2003/2004 -- neuronal avalanche reference
     # ------------------------------------------------------------------
@@ -168,7 +166,6 @@ DATASETS: dict[str, DatasetInfo] = {
             "24(22):5216-5229."
         ),
     ),
-
     # ------------------------------------------------------------------
     # 4. Kagan et al. 2022 -- DishBrain
     # ------------------------------------------------------------------
@@ -202,7 +199,6 @@ DATASETS: dict[str, DatasetInfo] = {
             "methodology is the direct inspiration for BL-1's game loop."
         ),
     ),
-
     # ------------------------------------------------------------------
     # 5. Mendeley MEA dataset -- rat cortical culture longitudinal
     # ------------------------------------------------------------------
@@ -228,7 +224,6 @@ DATASETS: dict[str, DatasetInfo] = {
         burst_rate_per_min=(1.0, 15.0),
         notes="Freely downloadable from Mendeley Data. Relatively small dataset.",
     ),
-
     # ------------------------------------------------------------------
     # 6. Heiney et al. 2022 -- criticality in embodied cultures
     # ------------------------------------------------------------------
@@ -262,7 +257,6 @@ DATASETS: dict[str, DatasetInfo] = {
             "for processed data."
         ),
     ),
-
     # ------------------------------------------------------------------
     # 7. Multi-Channel Systems example data
     # ------------------------------------------------------------------
@@ -311,7 +305,9 @@ def list_datasets(verbose: bool = True) -> list[str]:
         return keys
 
     # Header
-    header = f"{'Key':<28s} {'Species':<18s} {'Culture':<18s} {'DIV':<8s} {'Format':<8s} {'#Rec':>5s}"
+    header = (
+        f"{'Key':<28s} {'Species':<18s} {'Culture':<18s} {'DIV':<8s} {'Format':<8s} {'#Rec':>5s}"
+    )
     print(header)
     print("-" * len(header))
 
@@ -374,10 +370,7 @@ def compare_statistics(
         KeyError: If ``dataset_name`` is not in :data:`DATASETS`.
     """
     if dataset_name not in DATASETS:
-        raise KeyError(
-            f"Unknown dataset '{dataset_name}'. "
-            f"Available: {sorted(DATASETS.keys())}"
-        )
+        raise KeyError(f"Unknown dataset '{dataset_name}'. Available: {sorted(DATASETS.keys())}")
 
     ds = DATASETS[dataset_name]
     results: dict[str, dict] = {}

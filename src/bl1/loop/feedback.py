@@ -278,13 +278,23 @@ def compute_feedback_current(
 
     elif protocol.mode == "event_based":
         I_feedback = _compute_event_based(
-            protocol, feedback_state, events, reward,
-            n_neurons, neuron_electrode_map, key, td_error,
+            protocol,
+            feedback_state,
+            events,
+            reward,
+            n_neurons,
+            neuron_electrode_map,
+            key,
+            td_error,
         )
 
     elif protocol.mode == "reward_based":
         I_feedback = _compute_reward_based(
-            protocol, reward, n_neurons, neuron_electrode_map, key,
+            protocol,
+            reward,
+            n_neurons,
+            neuron_electrode_map,
+            key,
         )
 
     feedback_state.step_count += 1
@@ -361,7 +371,10 @@ def _compute_event_based(
                 if cfg.unpredictable:
                     key, subkey = jax.random.split(key)
                     noise = jax.random.uniform(
-                        subkey, (n_neurons,), minval=0.5, maxval=1.5,
+                        subkey,
+                        (n_neurons,),
+                        minval=0.5,
+                        maxval=1.5,
                     )
                     I_feedback = I_feedback + neuron_mask * amplitude * noise
                 else:
@@ -398,9 +411,7 @@ def _compute_reward_based(
         for ch in protocol.reward_positive_channels:
             if ch < neuron_electrode_map.shape[0]:
                 mask = neuron_electrode_map[ch].astype(jnp.float32)
-                I_feedback = I_feedback + (
-                    mask * protocol.reward_positive_amplitude * abs(reward)
-                )
+                I_feedback = I_feedback + (mask * protocol.reward_positive_amplitude * abs(reward))
     elif reward < 0:
         key, subkey = jax.random.split(key)
         noise = jax.random.uniform(subkey, (n_neurons,), minval=0.5, maxval=1.5)

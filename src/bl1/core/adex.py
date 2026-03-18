@@ -41,33 +41,68 @@ from jax import Array
 
 _CELL_TYPES = {
     "RS": {
-        "C": 281.0, "g_L": 30.0, "E_L": -70.6, "delta_T": 2.0,
-        "V_T": -50.4, "V_reset": -70.6, "V_peak": 20.0,
-        "a": 4.0, "b": 80.5, "tau_w": 144.0,
+        "C": 281.0,
+        "g_L": 30.0,
+        "E_L": -70.6,
+        "delta_T": 2.0,
+        "V_T": -50.4,
+        "V_reset": -70.6,
+        "V_peak": 20.0,
+        "a": 4.0,
+        "b": 80.5,
+        "tau_w": 144.0,
         "frac": 0.64,
     },
     "Bursting": {
-        "C": 281.0, "g_L": 30.0, "E_L": -70.6, "delta_T": 2.0,
-        "V_T": -50.4, "V_reset": -47.2, "V_peak": 20.0,
-        "a": 4.0, "b": 80.5, "tau_w": 20.0,
+        "C": 281.0,
+        "g_L": 30.0,
+        "E_L": -70.6,
+        "delta_T": 2.0,
+        "V_T": -50.4,
+        "V_reset": -47.2,
+        "V_peak": 20.0,
+        "a": 4.0,
+        "b": 80.5,
+        "tau_w": 20.0,
         "frac": 0.08,
     },
     "FS": {
-        "C": 281.0, "g_L": 30.0, "E_L": -70.6, "delta_T": 2.0,
-        "V_T": -50.4, "V_reset": -70.6, "V_peak": 20.0,
-        "a": 4.0, "b": 0.5, "tau_w": 144.0,
+        "C": 281.0,
+        "g_L": 30.0,
+        "E_L": -70.6,
+        "delta_T": 2.0,
+        "V_T": -50.4,
+        "V_reset": -70.6,
+        "V_peak": 20.0,
+        "a": 4.0,
+        "b": 0.5,
+        "tau_w": 144.0,
         "frac": 0.16,
     },
     "Adapting": {
-        "C": 281.0, "g_L": 30.0, "E_L": -70.6, "delta_T": 2.0,
-        "V_T": -50.4, "V_reset": -70.6, "V_peak": 20.0,
-        "a": 28.0, "b": 0.0, "tau_w": 144.0,
+        "C": 281.0,
+        "g_L": 30.0,
+        "E_L": -70.6,
+        "delta_T": 2.0,
+        "V_T": -50.4,
+        "V_reset": -70.6,
+        "V_peak": 20.0,
+        "a": 28.0,
+        "b": 0.0,
+        "tau_w": 144.0,
         "frac": 0.08,
     },
     "Irregular": {
-        "C": 281.0, "g_L": 30.0, "E_L": -70.6, "delta_T": 2.0,
-        "V_T": -50.4, "V_reset": -70.6, "V_peak": 20.0,
-        "a": -10.0, "b": 30.0, "tau_w": 300.0,
+        "C": 281.0,
+        "g_L": 30.0,
+        "E_L": -70.6,
+        "delta_T": 2.0,
+        "V_T": -50.4,
+        "V_reset": -70.6,
+        "V_peak": 20.0,
+        "a": -10.0,
+        "b": 30.0,
+        "tau_w": 300.0,
         "frac": 0.04,
     },
 }
@@ -80,30 +115,34 @@ _TYPE_ORDER = ["RS", "Bursting", "Adapting", "FS", "Irregular"]
 # State containers (plain NamedTuples — JAX pytree compatible out of the box)
 # ---------------------------------------------------------------------------
 
+
 class AdExParams(NamedTuple):
     """Per-neuron AdEx model parameters."""
-    C: Array       # (N,) membrane capacitance (pF)
-    g_L: Array     # (N,) leak conductance (nS)
-    E_L: Array     # (N,) leak reversal potential (mV)
-    delta_T: Array # (N,) slope factor (mV)
-    V_T: Array     # (N,) threshold voltage (mV)
-    V_reset: Array # (N,) reset voltage (mV)
+
+    C: Array  # (N,) membrane capacitance (pF)
+    g_L: Array  # (N,) leak conductance (nS)
+    E_L: Array  # (N,) leak reversal potential (mV)
+    delta_T: Array  # (N,) slope factor (mV)
+    V_T: Array  # (N,) threshold voltage (mV)
+    V_reset: Array  # (N,) reset voltage (mV)
     V_peak: Array  # (N,) spike detection threshold (mV)
-    a: Array       # (N,) subthreshold adaptation coupling (nS)
-    b: Array       # (N,) spike-triggered adaptation increment (pA)
-    tau_w: Array   # (N,) adaptation time constant (ms)
+    a: Array  # (N,) subthreshold adaptation coupling (nS)
+    b: Array  # (N,) spike-triggered adaptation increment (pA)
+    tau_w: Array  # (N,) adaptation time constant (ms)
 
 
 class AdExState(NamedTuple):
     """Per-neuron dynamic state variables."""
-    v: Array      # (N,) membrane potential (mV)
-    w: Array      # (N,) adaptation current (pA)
-    spikes: Array # (N,) boolean spike indicator for the current timestep
+
+    v: Array  # (N,) membrane potential (mV)
+    w: Array  # (N,) adaptation current (pA)
+    spikes: Array  # (N,) boolean spike indicator for the current timestep
 
 
 # ---------------------------------------------------------------------------
 # Population factory
 # ---------------------------------------------------------------------------
+
 
 def create_adex_population(
     key: Array,
@@ -142,8 +181,7 @@ def create_adex_population(
     ordered_types = exc_types + inh_types  # RS, Bursting, Adapting, FS, Irregular
 
     # Build flat parameter arrays
-    param_names = ["C", "g_L", "E_L", "delta_T", "V_T", "V_reset", "V_peak",
-                   "a", "b", "tau_w"]
+    param_names = ["C", "g_L", "E_L", "delta_T", "V_T", "V_reset", "V_peak", "a", "b", "tau_w"]
     param_lists = {name: [] for name in param_names}
 
     for i, t in enumerate(ordered_types):
@@ -152,8 +190,7 @@ def create_adex_population(
         for name in param_names:
             param_lists[name].append(jnp.full(n_t, p[name]))
 
-    param_arrays = {name: jnp.concatenate(param_lists[name])
-                    for name in param_names}
+    param_arrays = {name: jnp.concatenate(param_lists[name]) for name in param_names}
 
     params = AdExParams(**param_arrays)
 
@@ -173,6 +210,7 @@ def create_adex_population(
 # ---------------------------------------------------------------------------
 # Simulation step (JIT-compiled)
 # ---------------------------------------------------------------------------
+
 
 @jax.jit
 def adex_step(
@@ -225,6 +263,7 @@ def adex_step(
 # ---------------------------------------------------------------------------
 # Differentiable surrogate-gradient variant
 # ---------------------------------------------------------------------------
+
 
 def adex_step_surrogate(
     state: AdExState,

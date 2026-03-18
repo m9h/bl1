@@ -13,12 +13,12 @@ import contextlib
 import matplotlib.pyplot as plt
 
 # -- Colour palette (ColorBrewer RdBu diverging) --
-BLUE_E = "#2166AC"       # excitatory neurons
-RED_I = "#B2182B"        # inhibitory neurons
-BLUE_LIGHT = "#4393C3"   # population rate fills
-RED_LIGHT = "#D6604D"    # secondary accent
-GREY = "#636363"         # neutral / annotations
-BLACK = "#1a1a1a"        # raster dots
+BLUE_E = "#2166AC"  # excitatory neurons
+RED_I = "#B2182B"  # inhibitory neurons
+BLUE_LIGHT = "#4393C3"  # population rate fills
+RED_LIGHT = "#D6604D"  # secondary accent
+GREY = "#636363"  # neutral / annotations
+BLACK = "#1a1a1a"  # raster dots
 
 DPI = 150
 

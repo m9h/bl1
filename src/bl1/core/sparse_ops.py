@@ -34,6 +34,7 @@ from jax.experimental.sparse import BCOO
 # Raw weight arrays container
 # ---------------------------------------------------------------------------
 
+
 class RawSparseWeights(NamedTuple):
     """Pre-extracted COO arrays for :func:`fast_sparse_input`.
 
@@ -49,6 +50,7 @@ class RawSparseWeights(NamedTuple):
         Number of post-synaptic neurons (= number of rows in the
         original weight matrix).
     """
+
     data: Array
     rows: Array
     cols: Array
@@ -58,6 +60,7 @@ class RawSparseWeights(NamedTuple):
 # ---------------------------------------------------------------------------
 # BCOO -> raw conversion
 # ---------------------------------------------------------------------------
+
 
 def bcoo_to_raw(W: BCOO) -> RawSparseWeights:
     """Extract flat COO arrays from a BCOO sparse matrix.
@@ -84,6 +87,7 @@ def bcoo_to_raw(W: BCOO) -> RawSparseWeights:
 # ---------------------------------------------------------------------------
 # Fast sparse matmul replacement
 # ---------------------------------------------------------------------------
+
 
 def fast_sparse_input(
     W_data: Array,

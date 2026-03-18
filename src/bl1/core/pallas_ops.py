@@ -217,12 +217,12 @@ def csc_event_driven_input(
     active_valid = jnp.arange(max_active) < n_active  # (max_active,)
 
     # 2. For each active neuron, gather its CSC column range
-    starts = csc.col_ptr[active_indices]      # (max_active,)
-    ends = csc.col_ptr[active_indices + 1]    # (max_active,)
+    starts = csc.col_ptr[active_indices]  # (max_active,)
+    ends = csc.col_ptr[active_indices + 1]  # (max_active,)
 
     # 3. Build padded index array: (max_active, max_syn)
-    offsets = jnp.arange(max_syn)                        # (max_syn,)
-    flat_indices = starts[:, None] + offsets[None, :]     # (max_active, max_syn)
+    offsets = jnp.arange(max_syn)  # (max_syn,)
+    flat_indices = starts[:, None] + offsets[None, :]  # (max_active, max_syn)
 
     # Mask: valid if (a) index < end of this neuron's range AND
     #                 (b) this active slot is not padding
@@ -233,19 +233,19 @@ def csc_event_driven_input(
     safe_indices = jnp.clip(flat_indices, 0, nnz - 1)
 
     # 4. Gather weights and targets
-    weights = csc.data[safe_indices]           # (max_active, max_syn)
-    targets = csc.row_indices[safe_indices]    # (max_active, max_syn)
+    weights = csc.data[safe_indices]  # (max_active, max_syn)
+    targets = csc.row_indices[safe_indices]  # (max_active, max_syn)
 
     # Apply validity mask to weights (zero out padding contributions)
     weights = jnp.where(syn_valid, weights, 0.0)
 
     # Scale by spike amplitude
-    spike_amps = spikes[active_indices]        # (max_active,)
-    weighted = weights * spike_amps[:, None]   # (max_active, max_syn)
+    spike_amps = spikes[active_indices]  # (max_active,)
+    weighted = weights * spike_amps[:, None]  # (max_active, max_syn)
 
     # 5. Scatter-add into postsynaptic neurons
-    flat_targets = targets.ravel()             # (max_active * max_syn,)
-    flat_weighted = weighted.ravel()           # (max_active * max_syn,)
+    flat_targets = targets.ravel()  # (max_active * max_syn,)
+    flat_weighted = weighted.ravel()  # (max_active * max_syn,)
 
     return jax.ops.segment_sum(flat_weighted, flat_targets, num_segments=n_post)
 

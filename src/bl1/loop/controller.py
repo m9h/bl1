@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 # Feedback stimulation helpers
 # ---------------------------------------------------------------------------
 
+
 def _feedback_fep(
     key: Array,
     event_code: int,
@@ -91,6 +92,7 @@ def _feedback_open_loop(key: Array, n_neurons: int) -> Array:
 # Inner simulation step (designed for jax.lax.scan) -- no delays
 # ---------------------------------------------------------------------------
 
+
 def _make_scan_step(
     params: IzhikevichParams,
     W_inh: Array,
@@ -111,6 +113,7 @@ def _make_scan_step(
     use_stp = stp_params is not None
 
     if use_stp:
+
         def step_fn(carry, I_ext_t):
             neuron_state, syn_state, stdp_state, W_exc, stp_st = carry
 
@@ -133,12 +136,18 @@ def _make_scan_step(
 
             # Phase 2: dual-exponential receptors
             new_nmda_rise, new_nmda_decay, _ = nmda_step(
-                syn_state.g_nmda_rise, syn_state.g_nmda_decay,
-                scale, W_exc, dt,
+                syn_state.g_nmda_rise,
+                syn_state.g_nmda_decay,
+                scale,
+                W_exc,
+                dt,
             )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
-                syn_state.g_gaba_b_rise, syn_state.g_gaba_b_decay,
-                scale, W_inh, dt,
+                syn_state.g_gaba_b_rise,
+                syn_state.g_gaba_b_decay,
+                scale,
+                W_inh,
+                dt,
             )
 
             syn_state = SynapseState(
@@ -153,13 +162,18 @@ def _make_scan_step(
             # 6. STDP (optional)
             if has_plasticity and stdp_params is not None:
                 stdp_state, W_exc = stdp_update(
-                    stdp_state, stdp_params, neuron_state.spikes,
-                    W_exc, is_excitatory, dt,
+                    stdp_state,
+                    stdp_params,
+                    neuron_state.spikes,
+                    W_exc,
+                    is_excitatory,
+                    dt,
                 )
 
             new_carry = (neuron_state, syn_state, stdp_state, W_exc, stp_st)
             return new_carry, neuron_state.spikes
     else:
+
         def step_fn(carry, I_ext_t):
             neuron_state, syn_state, stdp_state, W_exc = carry
 
@@ -181,12 +195,18 @@ def _make_scan_step(
 
             # Phase 2: dual-exponential receptors
             new_nmda_rise, new_nmda_decay, _ = nmda_step(
-                syn_state.g_nmda_rise, syn_state.g_nmda_decay,
-                spikes_f, W_exc, dt,
+                syn_state.g_nmda_rise,
+                syn_state.g_nmda_decay,
+                spikes_f,
+                W_exc,
+                dt,
             )
             new_gaba_b_rise, new_gaba_b_decay, _ = gaba_b_step(
-                syn_state.g_gaba_b_rise, syn_state.g_gaba_b_decay,
-                spikes_f, W_inh, dt,
+                syn_state.g_gaba_b_rise,
+                syn_state.g_gaba_b_decay,
+                spikes_f,
+                W_inh,
+                dt,
             )
 
             syn_state = SynapseState(
@@ -201,8 +221,12 @@ def _make_scan_step(
             # 5. STDP (optional)
             if has_plasticity and stdp_params is not None:
                 stdp_state, W_exc = stdp_update(
-                    stdp_state, stdp_params, neuron_state.spikes,
-                    W_exc, is_excitatory, dt,
+                    stdp_state,
+                    stdp_params,
+                    neuron_state.spikes,
+                    W_exc,
+                    is_excitatory,
+                    dt,
                 )
 
             new_carry = (neuron_state, syn_state, stdp_state, W_exc)
@@ -214,6 +238,7 @@ def _make_scan_step(
 # ---------------------------------------------------------------------------
 # Inner simulation step with axonal conduction delays
 # ---------------------------------------------------------------------------
+
 
 def _make_scan_step_delayed(
     params: IzhikevichParams,
@@ -236,6 +261,7 @@ def _make_scan_step_delayed(
     use_stp = stp_params is not None
 
     if use_stp:
+
         def step_fn(carry, I_ext_t):
             neuron_state, syn_state, stdp_state, W_exc, delay_buf, stp_st = carry
 
@@ -264,12 +290,10 @@ def _make_scan_step_delayed(
 
             # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
             new_nmda_rise = (
-                syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
-                + g_input_exc * _NMDA_NORM
+                syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE) + g_input_exc * _NMDA_NORM
             )
             new_nmda_decay = (
-                syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
-                + g_input_exc * _NMDA_NORM
+                syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY) + g_input_exc * _NMDA_NORM
             )
 
             # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
@@ -294,13 +318,18 @@ def _make_scan_step_delayed(
             # 7. STDP (optional)
             if has_plasticity and stdp_params is not None:
                 stdp_state, W_exc = stdp_update(
-                    stdp_state, stdp_params, neuron_state.spikes,
-                    W_exc, is_excitatory, dt,
+                    stdp_state,
+                    stdp_params,
+                    neuron_state.spikes,
+                    W_exc,
+                    is_excitatory,
+                    dt,
                 )
 
             new_carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf, stp_st)
             return new_carry, neuron_state.spikes
     else:
+
         def step_fn(carry, I_ext_t):
             neuron_state, syn_state, stdp_state, W_exc, delay_buf = carry
 
@@ -327,12 +356,10 @@ def _make_scan_step_delayed(
 
             # Phase 2: NMDA (dual-exponential, excitatory, with normalisation)
             new_nmda_rise = (
-                syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE)
-                + g_input_exc * _NMDA_NORM
+                syn_state.g_nmda_rise * jnp.exp(-dt / TAU_NMDA_RISE) + g_input_exc * _NMDA_NORM
             )
             new_nmda_decay = (
-                syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY)
-                + g_input_exc * _NMDA_NORM
+                syn_state.g_nmda_decay * jnp.exp(-dt / TAU_NMDA_DECAY) + g_input_exc * _NMDA_NORM
             )
 
             # Phase 2: GABA_B (dual-exponential, inhibitory, with normalisation)
@@ -357,8 +384,12 @@ def _make_scan_step_delayed(
             # 6. STDP (optional)
             if has_plasticity and stdp_params is not None:
                 stdp_state, W_exc = stdp_update(
-                    stdp_state, stdp_params, neuron_state.spikes,
-                    W_exc, is_excitatory, dt,
+                    stdp_state,
+                    stdp_params,
+                    neuron_state.spikes,
+                    W_exc,
+                    is_excitatory,
+                    dt,
                 )
 
             new_carry = (neuron_state, syn_state, stdp_state, W_exc, delay_buf)
@@ -370,6 +401,7 @@ def _make_scan_step_delayed(
 # ---------------------------------------------------------------------------
 # Main ClosedLoop class
 # ---------------------------------------------------------------------------
+
 
 class ClosedLoop:
     """Closed-loop controller connecting a cortical culture to a game.
@@ -493,8 +525,11 @@ class ClosedLoop:
 
         # Neuron-electrode map for motor decoding
         from bl1.mea.electrode import build_neuron_electrode_map
+
         neuron_electrode_map = build_neuron_electrode_map(
-            positions, self.mea.positions, self.mea.detection_radius_um,
+            positions,
+            self.mea.positions,
+            self.mea.detection_radius_um,
         )
 
         # --- Timing ---
@@ -505,7 +540,9 @@ class ClosedLoop:
 
         logger.info(
             "ClosedLoop.run: %d total steps, %d game updates, feedback=%s",
-            total_steps, n_game_steps, feedback,
+            total_steps,
+            n_game_steps,
+            feedback,
         )
 
         # --- STDP state ---
@@ -535,8 +572,14 @@ class ClosedLoop:
             delay_buf = init_delay_buffer(n_neurons, max_delay)
 
             scan_step = _make_scan_step_delayed(
-                self.neuron_params, W_inh, W_exc_delays, W_inh_delays,
-                dt_ms, has_plasticity, self.stdp_params, is_excitatory,
+                self.neuron_params,
+                W_inh,
+                W_exc_delays,
+                W_inh_delays,
+                dt_ms,
+                has_plasticity,
+                self.stdp_params,
+                is_excitatory,
                 stp_params=self.stp_params,
             )
             logger.info(
@@ -546,8 +589,12 @@ class ClosedLoop:
         else:
             delay_buf = None
             scan_step = _make_scan_step(
-                self.neuron_params, W_inh, dt_ms,
-                has_plasticity, self.stdp_params, is_excitatory,
+                self.neuron_params,
+                W_inh,
+                dt_ms,
+                has_plasticity,
+                self.stdp_params,
+                is_excitatory,
                 stp_params=self.stp_params,
             )
 
@@ -579,7 +626,9 @@ class ClosedLoop:
             # 1. Decode motor action
             spike_window_jax = jnp.array(spike_window)
             action, _rates = decode_motor(
-                spike_window_jax, neuron_electrode_map, self.motor_regions,
+                spike_window_jax,
+                neuron_electrode_map,
+                self.motor_regions,
             )
 
             # 2. Step the game
@@ -605,8 +654,11 @@ class ClosedLoop:
 
             # 4. Encode sensory input
             active_electrodes, stim_amp, phase_acc = encode_sensory(
-                game_state, self.mea.config, self.sensory_channels,
-                dt_game_ms=game_dt_ms, _phase_accumulator=phase_acc,
+                game_state,
+                self.mea.config,
+                self.sensory_channels,
+                dt_game_ms=game_dt_ms,
+                _phase_accumulator=phase_acc,
             )
 
             # Build sensory stimulation current
@@ -654,8 +706,13 @@ class ClosedLoop:
                 spike_raster_list.append(np.asarray(spikes_block[::ds_factor], dtype=np.bool_))
 
             if g_step > 0 and g_step % 1000 == 0:
-                logger.info("  t=%.1f s  step=%d  events=%d  spikes=%d",
-                            time_ms / 1000, g_step, len(game_events), total_spikes)
+                logger.info(
+                    "  t=%.1f s  step=%d  events=%d  spikes=%d",
+                    time_ms / 1000,
+                    g_step,
+                    len(game_events),
+                    total_spikes,
+                )
 
         # --- Finalise ---
         if rally_counter > 0:

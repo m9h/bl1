@@ -112,8 +112,7 @@ class HybridPopulation:
         for i, m in enumerate(model_assignments):
             if m not in ("izhikevich", "adex"):
                 raise ValueError(
-                    f"Unknown model '{m}' at index {i}. "
-                    f"Supported: 'izhikevich', 'adex'"
+                    f"Unknown model '{m}' at index {i}. Supported: 'izhikevich', 'adex'"
                 )
 
         n_izh = sum(izh_mask)
@@ -128,9 +127,7 @@ class HybridPopulation:
         k1, k2 = jax.random.split(key)
 
         if n_izh > 0:
-            izh_params, izh_state, izh_exc = create_population(
-                k1, n_izh, ei_ratio
-            )
+            izh_params, izh_state, izh_exc = create_population(k1, n_izh, ei_ratio)
         else:
             # Empty Izhikevich sub-population
             izh_params = IzhikevichParams(
@@ -147,9 +144,7 @@ class HybridPopulation:
             izh_exc = jnp.array([], dtype=jnp.bool_)
 
         if n_adex_actual > 0:
-            adex_params, adex_state, adex_exc = create_adex_population(
-                k2, n_adex_actual, ei_ratio
-            )
+            adex_params, adex_state, adex_exc = create_adex_population(k2, n_adex_actual, ei_ratio)
         else:
             # Empty AdEx sub-population
             adex_params = AdExParams(

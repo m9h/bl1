@@ -120,9 +120,7 @@ def compute_culture_statistics(
     sigma = compute_branching_ratio(raster, dt_ms=dt_ms, bin_ms=avalanche_bin_ms)
     stats["branching_ratio"] = sigma
 
-    sizes, durations = avalanche_size_distribution(
-        raster, dt_ms=dt_ms, bin_ms=avalanche_bin_ms
-    )
+    sizes, durations = avalanche_size_distribution(raster, dt_ms=dt_ms, bin_ms=avalanche_bin_ms)
 
     stats["avalanche_size_exponent"] = _estimate_power_law_exponent(sizes)
     stats["avalanche_duration_exponent"] = _estimate_power_law_exponent(
@@ -147,7 +145,7 @@ def compute_culture_statistics(
     from bl1.analysis.information import integration as compute_integration
 
     _FC_SUBSET = 50
-    subset_raster = raster[:, :min(N, _FC_SUBSET)]
+    subset_raster = raster[:, : min(N, _FC_SUBSET)]
 
     try:
         cc_mat = cross_correlation_matrix(subset_raster, dt_ms=dt_ms)
@@ -163,7 +161,10 @@ def compute_culture_statistics(
 
     try:
         te_mat = transfer_entropy(
-            subset_raster, dt_ms=dt_ms, history_bins=3, subset=min(N, _FC_SUBSET),
+            subset_raster,
+            dt_ms=dt_ms,
+            history_bins=3,
+            subset=min(N, _FC_SUBSET),
         )
         n_sub = te_mat.shape[0]
         if n_sub > 1:
@@ -176,7 +177,9 @@ def compute_culture_statistics(
 
     try:
         ais = active_information_storage(
-            subset_raster, dt_ms=dt_ms, history_length=3,
+            subset_raster,
+            dt_ms=dt_ms,
+            history_length=3,
         )
         stats["active_information_storage_mean"] = float(np.mean(ais))
     except Exception:
@@ -184,7 +187,9 @@ def compute_culture_statistics(
 
     try:
         stats["integration"] = compute_integration(
-            subset_raster, dt_ms=dt_ms, n_samples=50,
+            subset_raster,
+            dt_ms=dt_ms,
+            n_samples=50,
         )
     except Exception:
         stats["integration"] = float("nan")
@@ -327,10 +332,7 @@ def generate_comparison_report(
 
     lines.append("")
     lines.append("-" * 72)
-    lines.append(
-        f"Summary: {n_pass} passed, {n_fail} failed, "
-        f"{n_no_ref} no reference data"
-    )
+    lines.append(f"Summary: {n_pass} passed, {n_fail} failed, {n_no_ref} no reference data")
     lines.append("-" * 72)
 
     return "\n".join(lines)

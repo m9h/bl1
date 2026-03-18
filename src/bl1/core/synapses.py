@@ -37,29 +37,30 @@ from bl1.core.sparse_ops import fast_sparse_input
 # Biophysical constants -- Phase 1 (AMPA, GABA_A)
 # ---------------------------------------------------------------------------
 
-TAU_AMPA: float = 2.0    # AMPA decay time constant (ms)
+TAU_AMPA: float = 2.0  # AMPA decay time constant (ms)
 TAU_GABA_A: float = 6.0  # GABA_A decay time constant (ms)
 
-E_AMPA: float = 0.0      # AMPA reversal potential (mV)
+E_AMPA: float = 0.0  # AMPA reversal potential (mV)
 E_GABA_A: float = -75.0  # GABA_A reversal potential (mV)
 
 # ---------------------------------------------------------------------------
 # Biophysical constants -- Phase 2 (NMDA, GABA_B)
 # ---------------------------------------------------------------------------
 
-TAU_NMDA_RISE: float = 2.0      # NMDA rise time constant (ms)
-TAU_NMDA_DECAY: float = 100.0   # NMDA decay time constant (ms)
-E_NMDA: float = 0.0             # NMDA reversal potential (mV)
-MG_CONC: float = 1.0            # Extracellular Mg2+ concentration (mM)
+TAU_NMDA_RISE: float = 2.0  # NMDA rise time constant (ms)
+TAU_NMDA_DECAY: float = 100.0  # NMDA decay time constant (ms)
+E_NMDA: float = 0.0  # NMDA reversal potential (mV)
+MG_CONC: float = 1.0  # Extracellular Mg2+ concentration (mM)
 
-TAU_GABA_B_RISE: float = 45.0   # GABA_B rise time constant (ms)
-TAU_GABA_B_DECAY: float = 170.0 # GABA_B decay time constant (ms)
-E_GABA_B: float = -95.0         # GABA_B reversal potential (mV)
+TAU_GABA_B_RISE: float = 45.0  # GABA_B rise time constant (ms)
+TAU_GABA_B_DECAY: float = 170.0  # GABA_B decay time constant (ms)
+E_GABA_B: float = -95.0  # GABA_B reversal potential (mV)
 
 
 # ---------------------------------------------------------------------------
 # Dual-exponential normalization factors
 # ---------------------------------------------------------------------------
+
 
 def _dual_exp_norm(tau_rise: float, tau_decay: float) -> float:
     """Normalization factor so peak of (exp(-t/tau_d) - exp(-t/tau_r)) = 1.
@@ -68,8 +69,7 @@ def _dual_exp_norm(tau_rise: float, tau_decay: float) -> float:
     the peak occurs at t_peak = td*tr/(td-tr) * ln(td/tr), and the
     normalization factor is 1 / f(t_peak).
     """
-    t_peak = (tau_decay * tau_rise / (tau_decay - tau_rise)
-              * math.log(tau_decay / tau_rise))
+    t_peak = tau_decay * tau_rise / (tau_decay - tau_rise) * math.log(tau_decay / tau_rise)
     peak_val = math.exp(-t_peak / tau_decay) - math.exp(-t_peak / tau_rise)
     return 1.0 / peak_val
 
@@ -82,19 +82,22 @@ _GABA_B_NORM: float = _dual_exp_norm(TAU_GABA_B_RISE, TAU_GABA_B_DECAY)
 # State container
 # ---------------------------------------------------------------------------
 
+
 class SynapseState(NamedTuple):
     """Aggregate conductance state per postsynaptic neuron."""
-    g_ampa: Array         # (N,) total AMPA conductance onto each neuron
-    g_gaba_a: Array       # (N,) total GABA_A conductance onto each neuron
-    g_nmda_rise: Array    # (N,) NMDA rise component (dual-exponential)
-    g_nmda_decay: Array   # (N,) NMDA decay component (dual-exponential)
+
+    g_ampa: Array  # (N,) total AMPA conductance onto each neuron
+    g_gaba_a: Array  # (N,) total GABA_A conductance onto each neuron
+    g_nmda_rise: Array  # (N,) NMDA rise component (dual-exponential)
+    g_nmda_decay: Array  # (N,) NMDA decay component (dual-exponential)
     g_gaba_b_rise: Array  # (N,) GABA_B rise component (dual-exponential)
-    g_gaba_b_decay: Array # (N,) GABA_B decay component (dual-exponential)
+    g_gaba_b_decay: Array  # (N,) GABA_B decay component (dual-exponential)
 
 
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
+
 
 def create_synapse_state(n_neurons: int) -> SynapseState:
     """Return a zeroed SynapseState for *n_neurons* postsynaptic neurons."""
@@ -112,6 +115,7 @@ def create_synapse_state(n_neurons: int) -> SynapseState:
 # ---------------------------------------------------------------------------
 # Per-receptor step functions -- Phase 1
 # ---------------------------------------------------------------------------
+
 
 @jax.jit
 def ampa_step(
@@ -165,6 +169,7 @@ def gaba_a_step(
 # ---------------------------------------------------------------------------
 # Per-receptor step functions -- Phase 2
 # ---------------------------------------------------------------------------
+
 
 def nmda_mg_block(v: Array) -> Array:
     """Mg2+ voltage-dependent block factor B(V).
@@ -255,6 +260,7 @@ def gaba_b_step(
 # Synaptic current computation
 # ---------------------------------------------------------------------------
 
+
 @jax.jit
 def compute_synaptic_current(syn_state: SynapseState, v: Array) -> Array:
     """Compute total synaptic current using the conductance driving-force model.
@@ -288,6 +294,7 @@ def compute_synaptic_current(syn_state: SynapseState, v: Array) -> Array:
 # ---------------------------------------------------------------------------
 # Fast sparse path — uses segment_sum instead of BCOO matmul
 # ---------------------------------------------------------------------------
+
 
 def ampa_step_fast(
     g: Array,
@@ -362,6 +369,7 @@ def gaba_b_step_fast(
 # ---------------------------------------------------------------------------
 # Event-driven path — CSC format, processes only spiking neurons
 # ---------------------------------------------------------------------------
+
 
 def ampa_step_event(
     g: Array,

@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 # Neuron placement
 # ---------------------------------------------------------------------------
 
+
 def place_neurons(
     key: jax.Array,
     n_neurons: int,
@@ -103,7 +104,7 @@ def place_neurons_spheroid(
         # Sample in [-1, 1]^3, then scale by radius
         candidates = 2.0 * jax.random.uniform(subkey, shape=(n_candidates, 3)) - 1.0
         # Keep points inside the unit sphere
-        r2 = jnp.sum(candidates ** 2, axis=-1)
+        r2 = jnp.sum(candidates**2, axis=-1)
         inside = r2 < 1.0
         # Move to numpy for dynamic indexing
         candidates_np = np.asarray(candidates)
@@ -187,6 +188,7 @@ def place_neurons_layered(
 # Distance-dependent connectivity (dense path, <10 K neurons)
 # ---------------------------------------------------------------------------
 
+
 def _build_connectivity_dense(
     key: jax.Array,
     positions: jnp.ndarray,
@@ -216,19 +218,19 @@ def _build_connectivity_dense(
     N = positions.shape[0]
 
     # --- distances (N, N) ------------------------------------------------
-    diff = positions[:, None, :] - positions[None, :, :]   # (N, N, 2)
-    dist = jnp.sqrt(jnp.sum(diff ** 2, axis=-1))           # (N, N)
+    diff = positions[:, None, :] - positions[None, :, :]  # (N, N, 2)
+    dist = jnp.sqrt(jnp.sum(diff**2, axis=-1))  # (N, N)
 
     # --- connection probabilities ----------------------------------------
     prob = p_max * jnp.exp(-dist / lambda_um)
-    prob = prob.at[jnp.diag_indices(N)].set(0.0)           # no self-connections
+    prob = prob.at[jnp.diag_indices(N)].set(0.0)  # no self-connections
 
     key_conn, key_w = jax.random.split(key)
     connected = jax.random.uniform(key_conn, shape=(N, N)) < prob  # bool
 
     # --- split into E / I masks -----------------------------------------
-    exc_mask = connected & is_excitatory[:, None]           # pre is excitatory
-    inh_mask = connected & ~is_excitatory[:, None]          # pre is inhibitory
+    exc_mask = connected & is_excitatory[:, None]  # pre is excitatory
+    inh_mask = connected & ~is_excitatory[:, None]  # pre is inhibitory
 
     # --- weights (with ±10 % uniform noise) ------------------------------
     key_we, key_wi = jax.random.split(key_w)
@@ -254,6 +256,7 @@ def _build_connectivity_dense(
 # ---------------------------------------------------------------------------
 # Distance-dependent connectivity (spatial-hashing path, ≥10 K neurons)
 # ---------------------------------------------------------------------------
+
 
 def _build_connectivity_spatial(
     key: jax.Array,
@@ -293,8 +296,9 @@ def _build_connectivity_spatial(
     bin_size = lambda_um  # square/cubic bin side
 
     # --- build spatial hash ----------------------------------------------
-    bin_idx = (pos_np / bin_size).astype(np.int32)           # (N, n_dim)
+    bin_idx = (pos_np / bin_size).astype(np.int32)  # (N, n_dim)
     from collections import defaultdict
+
     bins: dict[tuple, list[int]] = defaultdict(list)
     for i in range(N):
         bins[tuple(int(bin_idx[i, d]) for d in range(n_dim))].append(i)
@@ -356,7 +360,7 @@ def _build_connectivity_spatial(
 
         # Pairwise distances between src and tgt  (|src|, |tgt|)
         diff = src_pos[:, None, :] - tgt_pos[None, :, :]
-        dist = np.sqrt(np.sum(diff ** 2, axis=-1))
+        dist = np.sqrt(np.sum(diff**2, axis=-1))
 
         # Connection probability
         prob = p_max * np.exp(-dist / lambda_um)
@@ -427,8 +431,7 @@ def _build_connectivity_spatial(
             vals_np = np.empty(0, dtype=np.float64)
 
         indices = jnp.stack(
-            [jnp.array(rows_np, dtype=jnp.int32),
-             jnp.array(cols_np, dtype=jnp.int32)],
+            [jnp.array(rows_np, dtype=jnp.int32), jnp.array(cols_np, dtype=jnp.int32)],
             axis=-1,
         )
         data = jnp.array(vals_np, dtype=jnp.float32)
@@ -467,6 +470,7 @@ def _build_connectivity_spatial(
 # Optimized spatial connectivity (KD-tree + batched processing)
 # ---------------------------------------------------------------------------
 
+
 def _build_connectivity_spatial_fast(
     key: jax.Array,
     positions: jnp.ndarray,
@@ -501,13 +505,18 @@ def _build_connectivity_spatial_fast(
         from scipy.spatial import cKDTree
     except ImportError:
         logger.warning(
-            "scipy not available; falling back to slower spatial-hash "
-            "connectivity builder"
+            "scipy not available; falling back to slower spatial-hash connectivity builder"
         )
         return _build_connectivity_spatial(
-            key, positions, is_excitatory,
-            lambda_um=lambda_um, p_max=p_max, g_exc=g_exc, g_inh=g_inh,
-            v_axon_um_per_ms=v_axon_um_per_ms, dt=dt,
+            key,
+            positions,
+            is_excitatory,
+            lambda_um=lambda_um,
+            p_max=p_max,
+            g_exc=g_exc,
+            g_inh=g_inh,
+            v_axon_um_per_ms=v_axon_um_per_ms,
+            dt=dt,
         )
 
     pos_np: np.ndarray = np.asarray(positions)
@@ -525,8 +534,7 @@ def _build_connectivity_spatial_fast(
     if pair_set.shape[0] == 0:
         # No pairs within cutoff — return empty matrices
         empty = BCOO(
-            (jnp.empty(0, dtype=jnp.float32),
-             jnp.empty((0, 2), dtype=jnp.int32)),
+            (jnp.empty(0, dtype=jnp.float32), jnp.empty((0, 2), dtype=jnp.int32)),
             shape=(N, N),
         )
         return empty, empty, empty
@@ -536,8 +544,8 @@ def _build_connectivity_spatial_fast(
     tgt_all = np.concatenate([pair_set[:, 1], pair_set[:, 0]])  # post-synaptic
 
     # --- distances for all directed pairs --------------------------------
-    diff = pos_np[src_all] - pos_np[tgt_all]                    # (2P, 2)
-    dists = np.sqrt(np.sum(diff ** 2, axis=-1))                  # (2P,)
+    diff = pos_np[src_all] - pos_np[tgt_all]  # (2P, 2)
+    dists = np.sqrt(np.sum(diff**2, axis=-1))  # (2P,)
 
     # --- connection probabilities ----------------------------------------
     prob = p_max * np.exp(-dists / lambda_um)
@@ -551,15 +559,14 @@ def _build_connectivity_spatial_fast(
 
     if not np.any(connected):
         empty = BCOO(
-            (jnp.empty(0, dtype=jnp.float32),
-             jnp.empty((0, 2), dtype=jnp.int32)),
+            (jnp.empty(0, dtype=jnp.float32), jnp.empty((0, 2), dtype=jnp.int32)),
             shape=(N, N),
         )
         return empty, empty, empty
 
     # Filter to connected edges only
-    rows = src_all[connected]    # pre-synaptic (row in W[post, pre]? No.)
-    cols = tgt_all[connected]    # post-synaptic
+    rows = src_all[connected]  # pre-synaptic (row in W[post, pre]? No.)
+    cols = tgt_all[connected]  # post-synaptic
     conn_dists = dists[connected]
 
     # NOTE: Weight matrix convention is W[post, pre] so that
@@ -567,8 +574,8 @@ def _build_connectivity_spatial_fast(
     # In the code: rows = pre-synaptic index (column of W)
     #              cols = post-synaptic index (row of W)
     # But we need the BCOO matrix in (post, pre) layout, so:
-    W_rows = cols   # post-synaptic = row index in weight matrix
-    W_cols = rows   # pre-synaptic = column index in weight matrix
+    W_rows = cols  # post-synaptic = row index in weight matrix
+    W_cols = rows  # pre-synaptic = column index in weight matrix
 
     # --- delays (timesteps, minimum 1) -----------------------------------
     delay_steps = np.maximum(np.round(conn_dists / v_axon_um_per_ms / dt), 1.0)
@@ -586,16 +593,14 @@ def _build_connectivity_spatial_fast(
     def _to_bcoo_fast(mask, g_base):
         if not np.any(mask):
             return BCOO(
-                (jnp.empty(0, dtype=jnp.float32),
-                 jnp.empty((0, 2), dtype=jnp.int32)),
+                (jnp.empty(0, dtype=jnp.float32), jnp.empty((0, 2), dtype=jnp.int32)),
                 shape=(N, N),
             )
         r = W_rows[mask]
         c = W_cols[mask]
         v = (g_base * noise[mask]).astype(np.float32)
         indices = jnp.stack(
-            [jnp.array(r, dtype=jnp.int32),
-             jnp.array(c, dtype=jnp.int32)],
+            [jnp.array(r, dtype=jnp.int32), jnp.array(c, dtype=jnp.int32)],
             axis=-1,
         )
         return BCOO((jnp.array(v, dtype=jnp.float32), indices), shape=(N, N))
@@ -605,13 +610,11 @@ def _build_connectivity_spatial_fast(
 
     # --- Delays (all connected synapses) ---------------------------------
     all_indices = jnp.stack(
-        [jnp.array(W_rows, dtype=jnp.int32),
-         jnp.array(W_cols, dtype=jnp.int32)],
+        [jnp.array(W_rows, dtype=jnp.int32), jnp.array(W_cols, dtype=jnp.int32)],
         axis=-1,
     )
     delays_sp = BCOO(
-        (jnp.array(delay_steps.astype(np.float32), dtype=jnp.float32),
-         all_indices),
+        (jnp.array(delay_steps.astype(np.float32), dtype=jnp.float32), all_indices),
         shape=(N, N),
     )
 

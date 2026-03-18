@@ -27,6 +27,7 @@ from numpy.typing import NDArray
 # Spike binning (neuron-resolved)
 # ---------------------------------------------------------------------------
 
+
 def _bin_spikes_per_neuron(
     spike_raster: NDArray,
     dt_ms: float,
@@ -44,8 +45,7 @@ def _bin_spikes_per_neuron(
     """
     raster = np.asarray(spike_raster, dtype=np.float32)
     if raster.size == 0:
-        return np.empty((0, raster.shape[1] if raster.ndim == 2 else 0),
-                        dtype=np.float64)
+        return np.empty((0, raster.shape[1] if raster.ndim == 2 else 0), dtype=np.float64)
 
     steps_per_bin = max(int(round(bin_ms / dt_ms)), 1)
     T, N = raster.shape
@@ -63,6 +63,7 @@ def _bin_spikes_per_neuron(
 # ---------------------------------------------------------------------------
 # Cross-correlation
 # ---------------------------------------------------------------------------
+
 
 def cross_correlation_matrix(
     spike_raster: NDArray,
@@ -116,8 +117,8 @@ def cross_correlation_matrix(
 
         # Extract the relevant lags: positive lags [0..max_lag_bins]
         # and negative lags (wrapped to end of array) [-max_lag_bins..-1]
-        pos_lags = cc_full[:max_lag_bins + 1, :]  # lags 0..max_lag
-        neg_lags = cc_full[-max_lag_bins:, :]       # lags -max_lag..-1
+        pos_lags = cc_full[: max_lag_bins + 1, :]  # lags 0..max_lag
+        neg_lags = cc_full[-max_lag_bins:, :]  # lags -max_lag..-1
 
         # Combine and take peak absolute correlation
         all_lags = np.concatenate([neg_lags, pos_lags], axis=0)  # (2*max_lag+1, N)
@@ -129,6 +130,7 @@ def cross_correlation_matrix(
 # ---------------------------------------------------------------------------
 # Transfer entropy
 # ---------------------------------------------------------------------------
+
 
 def _binary_history_to_int(history: NDArray) -> NDArray:
     """Convert binary history vectors to integer state indices.
@@ -209,7 +211,7 @@ def transfer_entropy(
         # window[t] = binary[t:t+history_bins], we want t=0..n_samples-1
         history_states[:, n] = _binary_history_to_int(hist_windows[:n_samples])
 
-    n_history_states = 2 ** history_bins
+    n_history_states = 2**history_bins
 
     te_matrix = np.zeros((N, N), dtype=np.float64)
 
@@ -282,6 +284,7 @@ def transfer_entropy(
 # Effective connectivity graph
 # ---------------------------------------------------------------------------
 
+
 def effective_connectivity_graph(
     te_matrix: NDArray,
     threshold_percentile: float = 95.0,
@@ -307,6 +310,7 @@ def effective_connectivity_graph(
 # ---------------------------------------------------------------------------
 # Small-world coefficient
 # ---------------------------------------------------------------------------
+
 
 def _clustering_coefficient(adjacency: NDArray) -> float:
     """Compute mean clustering coefficient for a binary graph.
@@ -465,6 +469,7 @@ def small_world_coefficient(
 # ---------------------------------------------------------------------------
 # Rich-club coefficient
 # ---------------------------------------------------------------------------
+
 
 def rich_club_coefficient(
     adjacency: NDArray,

@@ -28,10 +28,10 @@ from jax import Array
 # ---------------------------------------------------------------------------
 
 _CELL_TYPES = {
-    "RS":  {"a": 0.02, "b": 0.2,  "c": -65.0, "d": 8.0, "frac": 0.64},
-    "IB":  {"a": 0.02, "b": 0.2,  "c": -55.0, "d": 4.0, "frac": 0.08},
-    "CH":  {"a": 0.02, "b": 0.2,  "c": -50.0, "d": 2.0, "frac": 0.08},
-    "FS":  {"a": 0.1,  "b": 0.2,  "c": -65.0, "d": 2.0, "frac": 0.16},
+    "RS": {"a": 0.02, "b": 0.2, "c": -65.0, "d": 8.0, "frac": 0.64},
+    "IB": {"a": 0.02, "b": 0.2, "c": -55.0, "d": 4.0, "frac": 0.08},
+    "CH": {"a": 0.02, "b": 0.2, "c": -50.0, "d": 2.0, "frac": 0.08},
+    "FS": {"a": 0.1, "b": 0.2, "c": -65.0, "d": 2.0, "frac": 0.16},
     "LTS": {"a": 0.02, "b": 0.25, "c": -65.0, "d": 2.0, "frac": 0.04},
 }
 
@@ -49,8 +49,10 @@ V_REST = -65.0
 # State containers (plain NamedTuples — JAX pytree compatible out of the box)
 # ---------------------------------------------------------------------------
 
+
 class IzhikevichParams(NamedTuple):
     """Per-neuron Izhikevich model parameters."""
+
     a: Array  # (N,) recovery time scale
     b: Array  # (N,) recovery sensitivity
     c: Array  # (N,) post-spike reset voltage (mV)
@@ -59,14 +61,16 @@ class IzhikevichParams(NamedTuple):
 
 class NeuronState(NamedTuple):
     """Per-neuron dynamic state variables."""
-    v: Array      # (N,) membrane potential (mV)
-    u: Array      # (N,) recovery variable
-    spikes: Array # (N,) boolean spike indicator for the current timestep
+
+    v: Array  # (N,) membrane potential (mV)
+    u: Array  # (N,) recovery variable
+    spikes: Array  # (N,) boolean spike indicator for the current timestep
 
 
 # ---------------------------------------------------------------------------
 # Population factory
 # ---------------------------------------------------------------------------
+
 
 def create_population(
     key: Array,
@@ -141,6 +145,7 @@ def create_population(
 # Simulation step (JIT-compiled)
 # ---------------------------------------------------------------------------
 
+
 @jax.jit
 def izhikevich_step(
     state: NeuronState,
@@ -185,6 +190,7 @@ def izhikevich_step(
 # ---------------------------------------------------------------------------
 # Differentiable surrogate-gradient variant
 # ---------------------------------------------------------------------------
+
 
 def izhikevich_step_surrogate(
     state: NeuronState,
