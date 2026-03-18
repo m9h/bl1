@@ -9,6 +9,9 @@ When axonal conduction delays are provided (``W_exc_delays`` and/or
 the scan carry so that pre-synaptic spikes reach their post-synaptic targets
 after the appropriate number of timesteps.  Without delay matrices the
 behaviour is identical to the original instantaneous-transmission path.
+Delays can be combined with event-driven sparse (BCOO) weights
+(``use_event_driven=True``) -- JAX handles BCOO in the per-delay masked
+matmul transparently.
 
 When short-term plasticity parameters are provided (``stp_params``), each
 timestep calls :func:`stp_step` to modulate presynaptic spike amplitudes
@@ -140,16 +143,20 @@ def simulate(
             Requires that ``W_exc`` and ``W_inh`` are BCOO arrays.
             Currently only supported on the no-delays path.
             Default ``False``.
-        use_event_driven: When ``True``, use the CSC event-driven sparse
-            kernel that only processes synapses from neurons that actually
-            spiked.  This achieves O(active_synapses) per timestep instead
-            of O(total_synapses).  At typical cortical firing rates (5 Hz)
-            with 100K neurons, this is ~400x less work than the full
-            matmul.  Requires BCOO weight matrices.  Not compatible with
-            delays, plasticity, or surrogate mode.  Default ``False``.
+        use_event_driven: When ``True``, use sparse (BCOO) weight matrices
+            for synaptic computation.  Without delays this activates the
+            CSC event-driven kernel (O(active_synapses) per timestep).
+            When combined with delays the delay-buffer path is used with
+            BCOO weights -- JAX handles BCOO in matmul transparently so
+            the per-delay-value masked matmul in :func:`read_delayed_spikes`
+            benefits from sparsity.  Requires BCOO weight matrices.  Not
+            compatible with plasticity or surrogate mode.  Default ``False``.
         max_active: Maximum number of simultaneously spiking neurons to
-            process in the event-driven path.  Must be a compile-time
-            constant.  Default 5000 (sufficient for 100K neurons at ~5 Hz).
+            process in the event-driven path (no-delay CSC kernel only).
+            Unused when delays are active since the delay-buffer path
+            handles spike propagation via :func:`read_delayed_spikes`.
+            Must be a compile-time constant.  Default 5000 (sufficient
+            for 100K neurons at ~5 Hz).
         surrogate: When ``True``, use :func:`izhikevich_step_surrogate`
             instead of the hard-threshold :func:`izhikevich_step`.  This
             makes the full simulation differentiable via surrogate
@@ -157,10 +164,10 @@ def simulate(
             non-zero gradients).  The initial state's ``spikes`` field
             is automatically cast to float32 for scan carry compatibility.
 
-            .. note:: Surrogate mode is currently only supported on the
-               no-delay, non-fast-sparse path.  Passing ``surrogate=True``
-               together with delay matrices or ``use_fast_sparse=True``
-               will raise :class:`ValueError`.
+            .. note:: Surrogate mode is supported on both the no-delay
+               and delay paths (including with STP).  Passing
+               ``surrogate=True`` together with ``use_fast_sparse=True``
+               or ``use_event_driven=True`` will raise :class:`ValueError`.
 
             Default ``False``.
         surrogate_fn: Surrogate gradient function from
@@ -181,11 +188,6 @@ def simulate(
     use_delays = (W_exc_delays is not None) or (W_inh_delays is not None)
 
     # Validate surrogate constraints
-    if surrogate and use_delays:
-        raise ValueError(
-            "surrogate=True is not yet supported with axonal delays. "
-            "Use the no-delay path for differentiable simulation."
-        )
     if surrogate and use_fast_sparse:
         raise ValueError(
             "surrogate=True is not yet supported with use_fast_sparse=True. "
@@ -196,8 +198,12 @@ def simulate(
             "surrogate=True is not yet supported with use_event_driven=True. "
             "Use the standard no-delay path for differentiable simulation."
         )
-    if use_event_driven and use_delays:
-        raise ValueError("use_event_driven=True is not yet supported with axonal delays.")
+    if use_event_driven and use_delays and plasticity_fn is not None:
+        raise ValueError(
+            "use_event_driven=True with delays does not support dynamic weight "
+            "plasticity (CSC format is pre-computed and cannot be updated during "
+            "the scan).  Use the standard delay path instead."
+        )
     if use_event_driven and use_fast_sparse:
         raise ValueError(
             "use_event_driven and use_fast_sparse are mutually exclusive. "
@@ -239,6 +245,9 @@ def simulate(
             W_inh_delays,
             max_delay,
             stp_params,
+            surrogate=surrogate,
+            surrogate_fn=surrogate_fn,
+            surrogate_beta=surrogate_beta,
         )
     elif use_event_driven:
         return _simulate_no_delays_event_driven(
@@ -883,6 +892,9 @@ def _simulate_with_delays(
     W_inh_delays,
     max_delay,
     stp_params=None,
+    surrogate=False,
+    surrogate_fn=None,
+    surrogate_beta=10.0,
 ) -> SimulationResult:
     """Simulation loop with axonal conduction delays.
 
@@ -895,9 +907,37 @@ def _simulate_with_delays(
     (which already incorporates the spike indicator) is written into the
     delay buffer instead of raw ``spikes_f``.  Delayed reads then
     automatically carry the STP amplitude.
+
+    When *surrogate* is True, uses :func:`izhikevich_step_surrogate`
+    for the neuron update, making the simulation differentiable via
+    surrogate gradients.
+
+    **BCOO sparse weights** (``use_event_driven=True`` combined with
+    delays): ``W_exc`` and ``W_inh`` may be BCOO sparse arrays.  JAX
+    handles element-wise multiplication (``BCOO * dense_delay_mask``)
+    and matrix-vector products (``BCOO @ spike_vector``) transparently
+    inside :func:`read_delayed_spikes`, so no code changes are needed
+    beyond removing the old ``ValueError`` gate.
     """
     N = init_state.v.shape[0]
     use_stp = stp_params is not None
+    use_surrogate = surrogate
+
+    # Helper: choose the appropriate neuron step function.
+    # This is a Python-level ``if`` so it creates a separate scan body
+    # closure, keeping the pytree structure consistent within each path.
+    def _neuron_step(neuron_state, I_total):
+        if use_surrogate:
+            return izhikevich_step_surrogate(
+                neuron_state,
+                params,
+                I_total,
+                dt,
+                surrogate_fn=surrogate_fn,
+                beta=surrogate_beta,
+            )
+        else:
+            return izhikevich_step(neuron_state, params, I_total, dt)
 
     # If one delay matrix is None, create a unit-delay fallback so that
     # the code path is uniform (delay=1 reproduces instantaneous semantics
@@ -921,8 +961,8 @@ def _simulate_with_delays(
             # 2. Total input current
             I_total = I_syn + I_t
 
-            # 3. Izhikevich neuron update
-            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+            # 3. Neuron update (surrogate-aware)
+            neuron_state = _neuron_step(neuron_state, I_total)
 
             # 4. STP modulation: scale includes spike indicator
             stp_st, scale = stp_step(stp_st, stp_params, neuron_state.spikes, dt)
@@ -986,8 +1026,8 @@ def _simulate_with_delays(
             # 2. Total input current
             I_total = I_syn + I_t
 
-            # 3. Izhikevich neuron update
-            neuron_state = izhikevich_step(neuron_state, params, I_total, dt)
+            # 3. Neuron update (surrogate-aware)
+            neuron_state = _neuron_step(neuron_state, I_total)
 
             # 4. Write new spikes into delay buffer
             spikes_f = neuron_state.spikes.astype(jnp.float32)

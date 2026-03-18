@@ -4,6 +4,9 @@ Verifies that:
 1. simulate() works with delay matrices (delayed path).
 2. simulate() without delay matrices produces identical results (backward compat).
 3. Non-trivial delays produce measurably different spike rasters.
+4. Event-driven (BCOO sparse) weights work with delays.
+5. Event-driven + delays + STP works correctly.
+6. Event-driven + delays produces identical results to dense delays.
 
 Uses small networks (50-100 neurons) and dense delay matrices.
 """
@@ -14,11 +17,13 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from jax.experimental.sparse import BCOO
 
 from bl1.core.delays import compute_max_delay, delays_to_dense, init_delay_buffer
 from bl1.core.integrator import simulate, simulate_jit
 from bl1.core.izhikevich import IzhikevichParams, NeuronState, create_population
 from bl1.core.synapses import SynapseState, create_synapse_state
+from bl1.plasticity.stp import STPParams
 
 
 # ---------------------------------------------------------------------------
@@ -259,3 +264,271 @@ def test_unit_delays_match_instantaneous():
         result_unit.final_neuron_state.v,
         atol=1e-5,
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers for event-driven + delay tests
+# ---------------------------------------------------------------------------
+
+def _make_bcoo_network(key, n_neurons=50, ei_ratio=0.8):
+    """Create a small network with BCOO sparse weight matrices and delays.
+
+    Returns params, init_state, syn_state, W_exc_bcoo, W_inh_bcoo,
+    W_exc_dense, W_inh_dense, delays.
+    """
+    k1, k2, k3 = jax.random.split(key, 3)
+
+    params, init_state, is_excitatory = create_population(k1, n_neurons, ei_ratio)
+    syn_state = create_synapse_state(n_neurons)
+
+    # Sparse random connectivity (10% density)
+    conn_mask = jax.random.bernoulli(k2, p=0.1, shape=(n_neurons, n_neurons))
+    conn_mask = conn_mask & ~jnp.eye(n_neurons, dtype=jnp.bool_)
+
+    exc_mask = is_excitatory[None, :] * conn_mask
+    inh_mask = ~is_excitatory[None, :] * conn_mask
+
+    W_exc_dense = exc_mask.astype(jnp.float32) * 0.05
+    W_inh_dense = inh_mask.astype(jnp.float32) * 0.20
+
+    W_exc_bcoo = BCOO.fromdense(W_exc_dense)
+    W_inh_bcoo = BCOO.fromdense(W_inh_dense)
+
+    # Distance-based delays: random 1-10 timesteps for connected pairs
+    delay_vals = jax.random.randint(k3, (n_neurons, n_neurons), 1, 11)
+    delays = jnp.where(conn_mask, delay_vals, 0).astype(jnp.int32)
+
+    return (params, init_state, syn_state,
+            W_exc_bcoo, W_inh_bcoo,
+            W_exc_dense, W_inh_dense,
+            delays)
+
+
+# ---------------------------------------------------------------------------
+# 6. Event-driven (BCOO) + delays runs without error
+# ---------------------------------------------------------------------------
+
+def test_event_driven_with_delays():
+    """simulate() with use_event_driven=True and delay matrices should run."""
+    key = jax.random.PRNGKey(42)
+    k1, k2 = jax.random.split(key)
+    N = 50
+    T = 200
+
+    (params, init_state, syn_state,
+     W_exc_bcoo, W_inh_bcoo, _, _, delays) = _make_bcoo_network(k1, N)
+    I_ext = _make_external_current(k2, N, T)
+
+    result = simulate(
+        params, init_state, syn_state, None,
+        W_exc_bcoo, W_inh_bcoo, I_ext, dt=0.5,
+        plasticity_fn=None,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        use_event_driven=True,
+    )
+
+    assert result.spike_history.shape == (T, N)
+    assert result.final_neuron_state.v.shape == (N,)
+    assert result.final_syn_state.g_ampa.shape == (N,)
+
+    total_spikes = int(jnp.sum(result.spike_history))
+    assert total_spikes > 0, "Expected at least some spikes with external drive."
+
+
+# ---------------------------------------------------------------------------
+# 7. Event-driven + delays matches dense + delays (bit-identical)
+# ---------------------------------------------------------------------------
+
+def test_event_driven_delays_matches_dense_delays():
+    """BCOO sparse weights with delays should produce the same results as
+    dense weights with delays, since the delay path handles both."""
+    key = jax.random.PRNGKey(77)
+    k1, k2 = jax.random.split(key)
+    N = 50
+    T = 200
+
+    (params, init_state, syn_state,
+     W_exc_bcoo, W_inh_bcoo,
+     W_exc_dense, W_inh_dense, delays) = _make_bcoo_network(k1, N)
+    I_ext = _make_external_current(k2, N, T)
+
+    # Dense path (no use_event_driven flag)
+    result_dense = simulate(
+        params, init_state, syn_state, None,
+        W_exc_dense, W_inh_dense, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+    )
+
+    # BCOO path (use_event_driven=True with delays)
+    result_sparse = simulate(
+        params, init_state, syn_state, None,
+        W_exc_bcoo, W_inh_bcoo, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        use_event_driven=True,
+    )
+
+    # Spike histories should be identical (same computation, just sparse format)
+    np.testing.assert_array_equal(
+        result_dense.spike_history,
+        result_sparse.spike_history,
+    )
+
+    np.testing.assert_allclose(
+        result_dense.final_neuron_state.v,
+        result_sparse.final_neuron_state.v,
+        atol=1e-5,
+    )
+
+    np.testing.assert_allclose(
+        result_dense.final_syn_state.g_ampa,
+        result_sparse.final_syn_state.g_ampa,
+        atol=1e-5,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 8. Event-driven + delays + STP
+# ---------------------------------------------------------------------------
+
+def test_event_driven_delays_with_stp():
+    """Event-driven (BCOO) + delays + STP should run and produce spikes."""
+    key = jax.random.PRNGKey(99)
+    k1, k2 = jax.random.split(key)
+    N = 50
+    T = 200
+
+    (params, init_state, syn_state,
+     W_exc_bcoo, W_inh_bcoo, _, _, delays) = _make_bcoo_network(k1, N)
+    I_ext = _make_external_current(k2, N, T)
+
+    stp = STPParams(
+        U=jnp.full(N, 0.5),
+        tau_rec=jnp.full(N, 200.0),
+        tau_fac=jnp.full(N, 50.0),
+    )
+
+    result = simulate(
+        params, init_state, syn_state, None,
+        W_exc_bcoo, W_inh_bcoo, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        stp_params=stp,
+        use_event_driven=True,
+    )
+
+    assert result.spike_history.shape == (T, N)
+    total_spikes = int(jnp.sum(result.spike_history))
+    assert total_spikes > 0, "Expected spikes with STP + delays + event-driven."
+
+
+# ---------------------------------------------------------------------------
+# 9. Event-driven + delays + STP matches dense path
+# ---------------------------------------------------------------------------
+
+def test_event_driven_delays_stp_matches_dense():
+    """BCOO + delays + STP should match dense + delays + STP."""
+    key = jax.random.PRNGKey(123)
+    k1, k2 = jax.random.split(key)
+    N = 50
+    T = 150
+
+    (params, init_state, syn_state,
+     W_exc_bcoo, W_inh_bcoo,
+     W_exc_dense, W_inh_dense, delays) = _make_bcoo_network(k1, N)
+    I_ext = _make_external_current(k2, N, T)
+
+    stp = STPParams(
+        U=jnp.full(N, 0.5),
+        tau_rec=jnp.full(N, 200.0),
+        tau_fac=jnp.full(N, 50.0),
+    )
+
+    result_dense = simulate(
+        params, init_state, syn_state, None,
+        W_exc_dense, W_inh_dense, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        stp_params=stp,
+    )
+
+    result_sparse = simulate(
+        params, init_state, syn_state, None,
+        W_exc_bcoo, W_inh_bcoo, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        stp_params=stp,
+        use_event_driven=True,
+    )
+
+    np.testing.assert_array_equal(
+        result_dense.spike_history,
+        result_sparse.spike_history,
+    )
+
+    np.testing.assert_allclose(
+        result_dense.final_neuron_state.v,
+        result_sparse.final_neuron_state.v,
+        atol=1e-5,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 10. Event-driven + delays rejects plasticity
+# ---------------------------------------------------------------------------
+
+def test_event_driven_delays_rejects_plasticity():
+    """simulate() with use_event_driven=True, delays, and plasticity should
+    raise ValueError."""
+    key = jax.random.PRNGKey(55)
+    k1, k2 = jax.random.split(key)
+    N = 50
+    T = 100
+
+    (params, init_state, syn_state,
+     W_exc_bcoo, W_inh_bcoo, _, _, delays) = _make_bcoo_network(k1, N)
+    I_ext = _make_external_current(k2, N, T)
+
+    def dummy_plasticity(stdp_state, spikes, w_exc):
+        return stdp_state, w_exc
+
+    with pytest.raises(ValueError, match="plasticity"):
+        simulate(
+            params, init_state, syn_state, None,
+            W_exc_bcoo, W_inh_bcoo, I_ext, dt=0.5,
+            plasticity_fn=dummy_plasticity,
+            W_exc_delays=delays,
+            W_inh_delays=delays,
+            use_event_driven=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# 11. max_active param accepted but unused with delays
+# ---------------------------------------------------------------------------
+
+def test_event_driven_delays_accepts_max_active():
+    """max_active parameter should be accepted without error when
+    use_event_driven=True and delays are active (it is unused in the
+    delay buffer path)."""
+    key = jax.random.PRNGKey(88)
+    k1, k2 = jax.random.split(key)
+    N = 50
+    T = 100
+
+    (params, init_state, syn_state,
+     W_exc_bcoo, W_inh_bcoo, _, _, delays) = _make_bcoo_network(k1, N)
+    I_ext = _make_external_current(k2, N, T)
+
+    # Should not raise
+    result = simulate(
+        params, init_state, syn_state, None,
+        W_exc_bcoo, W_inh_bcoo, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        use_event_driven=True,
+        max_active=100,
+    )
+    assert result.spike_history.shape == (T, N)

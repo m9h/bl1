@@ -309,24 +309,83 @@ def test_simulate_surrogate_custom_fn():
 # Extra: error on unsupported combos
 # ---------------------------------------------------------------------------
 
-def test_simulate_surrogate_with_delays_raises():
-    """surrogate=True with delay matrices should raise ValueError."""
-    N, T = 10, 50
+def test_simulate_surrogate_with_delays_runs():
+    """surrogate=True with delay matrices should run without error."""
+    key = jax.random.PRNGKey(77)
+    N, T = 20, 200
+
+    params, init_state, syn_state, W_exc, W_inh, _ = _make_small_network(key, N)
+    I_ext = _constant_current(T, N, amplitude=12.0)
+
+    delays = jnp.ones((N, N), dtype=jnp.int32) * 2
+
+    result = simulate(
+        params, init_state, syn_state, None,
+        W_exc, W_inh, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        surrogate=True,
+    )
+
+    assert result.spike_history.shape == (T, N)
+    assert result.spike_history.dtype == jnp.float32
+    total_spikes = float(jnp.sum(result.spike_history))
+    assert total_spikes > 0, "Expected spikes with surrogate + delays."
+
+
+def test_simulate_surrogate_with_delays_differentiable():
+    """jax.grad through surrogate + delays should produce nonzero gradients."""
+    N, T = 10, 200
     params, state = _make_neurons(N)
     syn_state = create_synapse_state(N)
 
-    W_exc = jnp.zeros((N, N), dtype=jnp.float32)
+    W_exc = jnp.eye(N, dtype=jnp.float32) * 0.0
     W_inh = jnp.zeros((N, N), dtype=jnp.float32)
-    I_ext = _constant_current(T, N)
-    delays = jnp.ones((N, N), dtype=jnp.int32)
+    delays = jnp.ones((N, N), dtype=jnp.int32) * 2
 
-    with pytest.raises(ValueError, match="surrogate.*not yet supported.*delays"):
-        simulate(
+    def loss_fn(I_ext):
+        result = simulate(
             params, state, syn_state, None,
             W_exc, W_inh, I_ext, dt=0.5,
             W_exc_delays=delays,
+            W_inh_delays=delays,
             surrogate=True,
         )
+        return jnp.sum(result.spike_history)
+
+    I_ext = _constant_current(T, N, amplitude=15.0)
+    grads = jax.grad(loss_fn)(I_ext)
+
+    assert grads.shape == (T, N)
+    assert float(jnp.max(jnp.abs(grads))) > 0, (
+        "Gradients are all zero -- surrogate gradient not flowing through delays path."
+    )
+
+
+def test_simulate_surrogate_with_delays_and_stp():
+    """surrogate + delays + STP should all work together."""
+    key = jax.random.PRNGKey(88)
+    N, T = 20, 200
+
+    params, init_state, syn_state, W_exc, W_inh, is_exc = _make_small_network(key, N)
+    I_ext = _constant_current(T, N, amplitude=12.0)
+
+    delays = jnp.ones((N, N), dtype=jnp.int32) * 3
+    stp_p = create_stp_params(N, is_exc)
+
+    result = simulate(
+        params, init_state, syn_state, None,
+        W_exc, W_inh, I_ext, dt=0.5,
+        W_exc_delays=delays,
+        W_inh_delays=delays,
+        stp_params=stp_p,
+        surrogate=True,
+    )
+
+    assert result.spike_history.shape == (T, N)
+    assert result.spike_history.dtype == jnp.float32
+    total_spikes = float(jnp.sum(result.spike_history))
+    assert total_spikes > 0, "Expected spikes with surrogate + delays + STP."
 
 
 def test_simulate_surrogate_with_fast_sparse_raises():

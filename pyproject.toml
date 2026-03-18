@@ -40,6 +40,12 @@ jaxley = [
 vizdoom = [
     "vizdoom>=1.2.0",
 ]
+docs = [
+    "sphinx>=7.0",
+    "sphinx-rtd-theme>=2.0",
+    "sphinx-autodoc-typehints>=2.0",
+    "myst-parser>=3.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bl1"]

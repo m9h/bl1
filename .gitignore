@@ -7,3 +7,4 @@ build/
 .pytest_cache/
 uv.lock
 .ipynb_checkpoints/
+docs/_build/

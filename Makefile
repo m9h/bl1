@@ -1,4 +1,4 @@
-.PHONY: lint test coverage quality typecheck all clean
+.PHONY: lint test coverage quality typecheck all clean docs
 
 VENV := .venv/bin
 
@@ -53,6 +53,10 @@ benchmark:
 # Benchmark (Modal A100)
 benchmark-gpu:
 	modal run benchmarks/modal_benchmark.py
+
+# Build documentation
+docs:
+	$(VENV)/sphinx-build -b html docs docs/_build/html
 
 # Clean
 clean:
