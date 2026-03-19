@@ -50,10 +50,11 @@ class TestPruning:
         W = W.at[1, 0].set(0.05)
         W = W.at[2, 0].set(0.0005)  # below default prune_threshold of 0.001
 
-        params = _default_params(prune_prob=1.0)
+        params = _default_params(prune_prob=1.0, target_synapse_fraction=0.01)
         W_new = structural_update(key, W, positions, is_exc, rates, params)
 
-        # The weak synapse should have been pruned.
+        # The weak synapse should have been pruned.  With target_synapse_fraction
+        # low enough, ratio > 1 so effective_prune_prob is clipped to 1.0.
         assert float(W_new[2, 0]) == 0.0, (
             f"Weak synapse should be pruned, got {W_new[2, 0]}"
         )

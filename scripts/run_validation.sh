@@ -190,9 +190,10 @@ echo ""
 STEP_START=$(date +%s)
 
 BIO_OUTPUT=$("$VENV_PYTHON" - 2>&1 <<'PYEOF'
-"""Run a 30-second simulation with Wagenaar-calibrated STP parameters
-and compare statistics against published ranges."""
+"""Run a 60-second simulation with Wagenaar-calibrated parameters
+(AMPA/NMDA split + STP) and compare statistics against published ranges."""
 
+import math
 import sys
 import time
 
@@ -206,25 +207,31 @@ from bl1.core.synapses import (
     create_synapse_state,
     ampa_step,
     gaba_a_step,
+    nmda_step,
     compute_synaptic_current,
 )
 from bl1.network.topology import place_neurons, build_connectivity
-from bl1.plasticity.stp import create_stp_params, init_stp_state, stp_step
+from bl1.plasticity.stp import STPParams, init_stp_state, stp_step
 from bl1.validation.comparison import compute_culture_statistics
 from bl1.validation.datasets import compare_statistics
 
-# --- Wagenaar-calibrated parameters (from calibrate_bursting_stp.py) ---
+# --- Wagenaar-calibrated parameters (configs/wagenaar_calibrated.yaml) ---
 N_NEURONS = 5000
-DURATION_MS = 30_000.0  # 30 seconds
+DURATION_MS = 60_000.0  # 60 seconds for robust IBI statistics
 DT = 0.5
-G_EXC = 0.08
-G_INH = 0.32
+G_EXC = 0.12
+G_INH = 0.36
 P_MAX = 0.21
+NMDA_RATIO = 0.37        # Fraction of g_exc routed through NMDA
+U_EXC = 0.30              # STP release probability
+TAU_REC = 800.0           # STP recovery time constant (ms)
 BG_MEAN = 1.0
 BG_STD = 3.0
+BURST_THRESHOLD_STD = 1.5  # Wagenaar-recommended burst detection threshold
 SEED = 42
 
 print(f"  Simulating {N_NEURONS} neurons for {DURATION_MS/1000:.0f}s (dt={DT}ms)...")
+print(f"  AMPA/NMDA split: {1-NMDA_RATIO:.0%}/{NMDA_RATIO:.0%}, STP U={U_EXC} tau_rec={TAU_REC}ms")
 t0 = time.perf_counter()
 
 key = jax.random.PRNGKey(SEED)
@@ -237,7 +244,16 @@ W_exc, W_inh, _ = build_connectivity(
     lambda_um=200.0, p_max=P_MAX, g_exc=G_EXC, g_inh=G_INH,
 )
 syn = create_synapse_state(N_NEURONS)
-stp_params = create_stp_params(N_NEURONS, is_exc)
+
+# Split excitatory weights: AMPA (fast, tau=2ms) + NMDA (slow, tau=100ms)
+W_ampa = W_exc * (1.0 - NMDA_RATIO)
+W_nmda = W_exc * NMDA_RATIO
+
+# Custom STP params: moderate depression for excitatory, facilitation for inhibitory
+U = jnp.where(is_exc, U_EXC, 0.04)
+tau_rec = jnp.where(is_exc, TAU_REC, 100.0)
+tau_fac = jnp.where(is_exc, 0.001, 1000.0)
+stp_params = STPParams(U=U, tau_rec=tau_rec, tau_fac=tau_fac)
 stp_state = init_stp_state(N_NEURONS, stp_params)
 
 n_steps = int(DURATION_MS / DT)
@@ -246,14 +262,16 @@ I_noise = BG_MEAN + BG_STD * jax.random.normal(k4, (n_steps, N_NEURONS))
 def step_fn(carry, I_t):
     ns, ss, stp_st = carry
     I_syn = compute_synaptic_current(ss, ns.v)
-    I_total = I_syn + I_t
-    ns = izhikevich_step(ns, params, I_total, DT)
+    ns = izhikevich_step(ns, params, I_syn + I_t, DT)
     stp_st, scale = stp_step(stp_st, stp_params, ns.spikes, DT)
-    new_ampa = ampa_step(ss.g_ampa, scale, W_exc, DT)
+    new_ampa = ampa_step(ss.g_ampa, scale, W_ampa, DT)
     new_gaba = gaba_a_step(ss.g_gaba_a, scale, W_inh, DT)
+    new_nmda_rise, new_nmda_decay, _ = nmda_step(
+        ss.g_nmda_rise, ss.g_nmda_decay, scale, W_nmda, DT,
+    )
     ss = SynapseState(
         g_ampa=new_ampa, g_gaba_a=new_gaba,
-        g_nmda_rise=ss.g_nmda_rise, g_nmda_decay=ss.g_nmda_decay,
+        g_nmda_rise=new_nmda_rise, g_nmda_decay=new_nmda_decay,
         g_gaba_b_rise=ss.g_gaba_b_rise, g_gaba_b_decay=ss.g_gaba_b_decay,
     )
     return (ns, ss, stp_st), ns.spikes
@@ -267,7 +285,9 @@ print()
 
 # --- Compute statistics and compare ---
 raster = np.asarray(spikes)
-stats = compute_culture_statistics(raster, dt_ms=DT)
+stats = compute_culture_statistics(
+    raster, dt_ms=DT, burst_threshold_std=BURST_THRESHOLD_STD,
+)
 
 results = compare_statistics(stats, "wagenaar_2006")
 
@@ -300,7 +320,6 @@ for metric_key in sorted(results.keys()):
     else:
         ref_str = "N/A"
 
-    import math
     val_str = "NaN" if math.isnan(sim_val) else f"{sim_val:.4g}"
     print(f"  {metric_key:<32s}  {val_str:<12s}  {ref_str:<20s}  {status}")
 

@@ -67,10 +67,19 @@ pip install --upgrade pip setuptools wheel --quiet
 echo "  Done."
 echo ""
 
-# ── 3. Install JAX with CUDA 12 support ───────────────────────────────────
-# DGX Spark ships Blackwell GPUs which require CUDA 12.
-echo "--- Installing JAX with CUDA 12 ---"
-pip install --upgrade "jax[cuda12]" --quiet
+# ── 3. Install JAX with GPU support ───────────────────────────────────────
+# Auto-detect CUDA version and install the appropriate JAX variant.
+echo "--- Installing JAX with GPU support ---"
+if [[ "$CUDA_VERSION" == 13.* ]]; then
+    echo "  Detected CUDA 13 — installing jax[cuda13]"
+    pip install --upgrade "jax[cuda13]" --quiet
+elif [[ "$CUDA_VERSION" == 12.* ]]; then
+    echo "  Detected CUDA 12 — installing jax[cuda12]"
+    pip install --upgrade "jax[cuda12]" --quiet
+else
+    echo "  CUDA version '$CUDA_VERSION' — trying jax[cuda13] (latest)"
+    pip install --upgrade "jax[cuda13]" --quiet
+fi
 echo "  Done."
 echo ""
 
