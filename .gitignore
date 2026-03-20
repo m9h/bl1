@@ -8,3 +8,4 @@ build/
 uv.lock
 .ipynb_checkpoints/
 docs/_build/
+data/

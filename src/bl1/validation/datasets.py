@@ -193,10 +193,10 @@ DATASETS: dict[str, DatasetInfo] = {
         mean_firing_rate_hz=(0.5, 10.0),
         burst_rate_per_min=(1.0, 15.0),
         notes=(
-            "Supplementary data includes some processed metrics; full "
-            "raw HD-MEA recordings not in public repository. Contact "
-            "Cortical Labs for data access. The DishBrain analysis "
-            "methodology is the direct inspiration for BL-1's game loop."
+            "Supplementary data includes some processed metrics. "
+            "Raw electrophysiology data available at https://osf.io/5u6qv/. "
+            "The DishBrain analysis methodology is the direct inspiration "
+            "for BL-1's game loop."
         ),
     ),
     # ------------------------------------------------------------------
@@ -281,6 +281,115 @@ DATASETS: dict[str, DatasetInfo] = {
         notes=(
             "Small example files freely downloadable. Useful for testing "
             "data loading pipelines before working with larger datasets."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # 8. Sharf, van der Molen et al. 2022 -- human brain organoid on MaxOne
+    # ------------------------------------------------------------------
+    "sharf_2022_organoid": DatasetInfo(
+        name="Sharf, van der Molen et al. 2022 (human brain organoid)",
+        description=(
+            "Human brain organoid slices recorded on MaxOne HD-MEA "
+            "(26,400 electrodes). Developmental series from 5-7 months "
+            "in vitro, including drug dose-response experiments "
+            "(benzodiazepine). Spike-sorted with Kilosort2."
+        ),
+        species="human iPSC",
+        culture_type="organoid",
+        mea_type="HD-MEA (MaxOne)",
+        div_range="150-210",
+        url="https://zenodo.org/record/6578989",
+        paper=(
+            "Sharf T, van der Molen T, Glasauer SMK, et al. (2022) "
+            "Functional neuronal circuitry and oscillatory dynamics in "
+            "human brain organoids. Nat Commun 13:4403. "
+            "doi:10.1038/s41467-022-32115-4"
+        ),
+        n_recordings=40,
+        data_format="hdf5",
+        mean_firing_rate_hz=(0.5, 10.0),
+        burst_rate_per_min=(1.0, 15.0),
+        notes=(
+            "~40 HDF5 files, 70.9 GB total. Also mirrored on Dryad: "
+            "https://datadryad.org/dataset/doi:10.25349/D9031Z. "
+            "Includes developmental series and drug dose-response. "
+            "Braingeneers/UCSC lab."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # 9. Mayama rat cortical HD-MEA -- DANDI 001611
+    # ------------------------------------------------------------------
+    "mayama_rat_cortical_hdmea": DatasetInfo(
+        name="DANDI 001611 (rat cortical HD-MEA, repeated stimulation)",
+        description=(
+            "Rat cortical dissociated cultures on HD-MEA with repeated "
+            "stimulation experiments. Large collection of NWB files "
+            "capturing evoked and spontaneous activity across many "
+            "recording sessions."
+        ),
+        species="rat",
+        culture_type="dissociated",
+        mea_type="HD-MEA",
+        div_range="",
+        url="https://dandiarchive.org/dandiset/001611",
+        paper="DANDI archive dataset (draft status). No formal citation yet.",
+        n_recordings=2700,
+        data_format="nwb",
+        notes=(
+            "2,700 NWB files, 39.9 GB total. Repeated stimulation "
+            "experiments. Closest biological match to BL-1's simulated "
+            "dissociated cortical cultures. Draft status on DANDI."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # 10. van der Molen et al. 2025 -- protosequences in organoids
+    # ------------------------------------------------------------------
+    "van_der_molen_2025_protosequences": DatasetInfo(
+        name="van der Molen et al. 2025 (protosequences in organoids)",
+        description=(
+            "Human and murine brain organoids recorded on Maxwell HD-MEA. "
+            "Demonstrates structured firing sequences (protosequences) -- "
+            "preconfigured neuronal firing patterns that emerge in organoid "
+            "cultures."
+        ),
+        species="human iPSC + mouse",
+        culture_type="organoid",
+        mea_type="HD-MEA (Maxwell)",
+        div_range="",
+        url="https://dandiarchive.org/dandiset/001603",
+        paper=(
+            "van der Molen T, et al. (2026) Protosequences in human "
+            "cortical organoids model neuronal diversity and connectivity. "
+            "Nat Neurosci 29:123-135. doi:10.1038/s41593-025-02111-0"
+        ),
+        n_recordings=111,
+        data_format="nwb",
+        notes=(
+            "111 NWB files, 322.2 GB total. Shows preconfigured neuronal "
+            "firing patterns (protosequences) in organoids."
+        ),
+    ),
+    # ------------------------------------------------------------------
+    # 11. Braingeneers SpikeCanvas -- DANDI 001747
+    # ------------------------------------------------------------------
+    "braingeneers_spikecanvas": DatasetInfo(
+        name="Braingeneers SpikeCanvas (DANDI 001747)",
+        description=(
+            "Large-scale HD neurophysiology dataset from human brain "
+            "organoids recorded on MaxOne HD-MEA. Collected via the "
+            "SpikeCanvas IoT data acquisition pipeline."
+        ),
+        species="human iPSC",
+        culture_type="organoid",
+        mea_type="HD-MEA (MaxOne)",
+        div_range="",
+        url="https://dandiarchive.org/dandiset/001747",
+        paper="DANDI archive dataset. Braingeneers/UCSC. No formal citation yet.",
+        n_recordings=160,
+        data_format="nwb",
+        notes=(
+            "160 NWB files, 1.6 TB total. SpikeCanvas IoT pipeline. "
+            "Braingeneers/UCSC. Very large dataset."
         ),
     ),
 }

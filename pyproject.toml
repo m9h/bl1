@@ -37,6 +37,9 @@ quality = [
 jaxley = [
     "jaxley>=0.3.0",
 ]
+nwb = [
+    "pynwb>=2.0",
+]
 vizdoom = [
     "vizdoom>=1.2.0",
 ]
@@ -120,6 +123,7 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "if _VIZDOOM_AVAILABLE",
     "if _JAXLEY_AVAILABLE",
+    "if _PYNWB_AVAILABLE",
     "if _PALLAS_AVAILABLE",
     "raise ImportError",
     "raise NotImplementedError",
