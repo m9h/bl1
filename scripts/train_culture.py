@@ -79,6 +79,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--I-noise-amplitude", type=float, default=5.0,
                     help="Amplitude of external noise current.")
 
+    # Real data
+    p.add_argument("--from-recording", type=str, default=None,
+                    help="Path to NWB or HDF5 recording. Extracts firing rate "
+                         "and burst rate as training targets automatically.")
+
     # Misc
     p.add_argument("--seed", type=int, default=42,
                     help="Random seed.")
@@ -97,6 +102,59 @@ def main(argv: list[str] | None = None) -> None:
 
     from bl1.training.trainer import TrainingConfig, train_weights
 
+    # --- Extract targets from real recording if provided ---
+    target_fr = args.target_firing_rate_hz
+    target_burst = args.target_burst_rate_per_min
+
+    if args.from_recording:
+        print(f"Loading recording: {args.from_recording}")
+        from bl1.validation.loaders import (
+            load_nwb_spike_trains,
+            load_maxwell_h5,
+            compute_recording_statistics,
+        )
+        ext = args.from_recording.rsplit(".", 1)[-1].lower()
+        if ext == "nwb":
+            rec = load_nwb_spike_trains(args.from_recording)
+        else:
+            rec = load_maxwell_h5(args.from_recording)
+
+        # Auto-detect sample indices (>24h = likely not seconds)
+        if rec["duration_s"] > 86400:
+            sr = rec.get("sampling_rate", 20000.0)
+            rec["spike_times"] = [st / sr for st in rec["spike_times"]]
+            rec["duration_s"] /= sr
+            print(f"  Converted sample indices at {sr:.0f} Hz")
+
+        # Find actual activity window (some recordings start late)
+        active_trains = [st for st in rec["spike_times"] if len(st) > 0]
+        if not active_trains:
+            print("  WARNING: No spikes found in recording, using default targets.")
+            target_fr = args.target_firing_rate_hz
+            target_burst = args.target_burst_rate_per_min
+        else:
+            t_min = float(min(st.min() for st in active_trains))
+            t_max = float(max(st.max() for st in active_trains))
+            actual_dur = t_max - t_min
+            use_dur = min(actual_dur, 120.0)
+            # Trim and shift to t=0
+            trimmed_times = []
+            for st in rec["spike_times"]:
+                mask = (st >= t_min) & (st <= t_min + use_dur)
+                trimmed_times.append(st[mask] - t_min)
+            trimmed = {
+                "spike_times": trimmed_times,
+                "duration_s": use_dur,
+                "n_units": rec["n_units"],
+            }
+            stats = compute_recording_statistics(trimmed, dt_ms=0.5, burst_threshold_std=1.5)
+            target_fr = stats["mean_firing_rate_hz"]
+            target_burst = stats["burst_rate_per_min"]
+            print(f"  Activity window: {t_min:.1f}s - {t_min+use_dur:.1f}s ({use_dur:.1f}s)")
+            print(f"  Units: {rec['n_units']}")
+            print(f"  Extracted targets: FR={target_fr:.2f} Hz, bursts={target_burst:.1f}/min")
+            print()
+
     config = TrainingConfig(
         n_neurons=args.n_neurons,
         ei_ratio=args.ei_ratio,
@@ -104,8 +162,8 @@ def main(argv: list[str] | None = None) -> None:
         dt=args.dt,
         learning_rate=args.learning_rate,
         n_epochs=args.n_epochs,
-        target_firing_rate_hz=args.target_firing_rate_hz,
-        target_burst_rate_per_min=args.target_burst_rate_per_min,
+        target_firing_rate_hz=target_fr,
+        target_burst_rate_per_min=target_burst,
         w_firing_rate=args.w_firing_rate,
         w_burst_rate=args.w_burst_rate,
         w_synchrony=args.w_synchrony,

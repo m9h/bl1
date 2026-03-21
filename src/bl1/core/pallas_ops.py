@@ -251,7 +251,170 @@ def csc_event_driven_input(
 
 
 # ---------------------------------------------------------------------------
-# Convenience: event-driven synaptic input (single function call)
+# Event-driven sparse matmul v2: flat gather (no 2D waste)
+# ---------------------------------------------------------------------------
+
+
+def csc_event_driven_input_v2(
+    csc: CSCWeights,
+    spikes: Array,
+    max_active: int = 5000,
+    max_synapses_total: int = 200_000,
+) -> Array:
+    """Optimised event-driven synaptic input using flat gather.
+
+    Avoids the (max_active, max_syn) 2D index matrix of v1 by computing
+    a flat array of active synapse indices directly.  This is significantly
+    more memory-efficient when max_syn varies widely across neurons.
+
+    Parameters
+    ----------
+    csc : CSCWeights
+        Pre-converted CSC weight matrix.
+    spikes : Array, shape ``(N_pre,)``
+        Presynaptic spike vector (float).
+    max_active : int
+        Maximum simultaneously active neurons (compile-time constant).
+    max_synapses_total : int
+        Maximum total active synapses across all spiking neurons
+        (compile-time constant).  Set to max_active * mean_synapses.
+        Default 200,000 handles 500 spikes * 400 synapses/neuron.
+    """
+    n_post = csc.n_post
+    nnz = csc.data.shape[0]
+
+    if csc.max_synapses_per_neuron == 0:
+        return jnp.zeros(n_post, dtype=jnp.float32)
+
+    # 1. Find spiking neuron indices
+    spike_mask = spikes > 0
+    active_indices = jnp.where(spike_mask, size=max_active, fill_value=0)[0]
+    n_active = jnp.sum(spike_mask.astype(jnp.int32))
+    active_valid = jnp.arange(max_active) < n_active
+
+    # 2. Compute synapse counts and offsets for each active neuron
+    starts = csc.col_ptr[active_indices]       # (max_active,)
+    ends = csc.col_ptr[active_indices + 1]     # (max_active,)
+    counts = jnp.where(active_valid, ends - starts, 0)  # (max_active,)
+
+    # Exclusive prefix sum to get flat output offsets
+    offsets = jnp.cumsum(counts) - counts  # (max_active,)
+
+    # 3. Build flat synapse index array using repeat-based expansion
+    # For each active neuron i, generate indices [starts[i], starts[i]+1, ..., ends[i]-1]
+    # Expand to flat array of size max_synapses_total
+    neuron_ids = jnp.repeat(jnp.arange(max_active), counts, total_repeat_length=max_synapses_total)
+    within_offsets = jnp.arange(max_synapses_total) - jnp.repeat(offsets, counts, total_repeat_length=max_synapses_total)
+
+    flat_syn_indices = jnp.repeat(starts, counts, total_repeat_length=max_synapses_total) + within_offsets
+
+    # Validity: the synapse index must be within [starts[i], ends[i]) and within nnz
+    flat_ends = jnp.repeat(ends, counts, total_repeat_length=max_synapses_total)
+    total_active_synapses = jnp.sum(counts)
+    flat_valid = (jnp.arange(max_synapses_total) < total_active_synapses) & (flat_syn_indices < flat_ends) & (flat_syn_indices < nnz)
+
+    # Safe indices for gather
+    safe_indices = jnp.where(flat_valid, flat_syn_indices, 0)
+
+    # 4. Gather weights and targets
+    weights = csc.data[safe_indices]
+    targets = csc.row_indices[safe_indices]
+    spike_amps = spikes[active_indices]
+    flat_amps = jnp.repeat(spike_amps, counts, total_repeat_length=max_synapses_total)
+
+    # Mask invalid contributions
+    weighted = jnp.where(flat_valid, weights * flat_amps, 0.0)
+
+    # 5. Scatter-add
+    return jax.ops.segment_sum(weighted, targets, num_segments=n_post)
+
+
+# ---------------------------------------------------------------------------
+# Pallas GPU kernel for event-driven CSC synaptic input
+# ---------------------------------------------------------------------------
+
+
+def _make_pallas_csc_kernel(max_syn: int, nnz: int):
+    """Create a Pallas kernel function with closed-over constants."""
+
+    def kernel(
+        col_ptr_ref,
+        row_indices_ref,
+        data_ref,
+        spikes_ref,
+        active_indices_ref,
+        active_valid_ref,
+        output_ref,
+    ):
+        block_idx = pl.program_id(axis=0)
+        is_valid = active_valid_ref[block_idx]
+        neuron_idx = active_indices_ref[block_idx]
+        spike_amp = spikes_ref[neuron_idx]
+        start = col_ptr_ref[neuron_idx]
+        end = col_ptr_ref[neuron_idx + 1]
+
+        def _body(syn_offset, _):
+            syn_idx = start + syn_offset
+            in_range = (syn_idx < end) & (syn_idx < nnz) & (is_valid > 0)
+            safe_idx = jnp.where(in_range, syn_idx, 0)
+            weight = data_ref[safe_idx]
+            target = row_indices_ref[safe_idx]
+            contrib = jnp.where(in_range, weight * spike_amp, 0.0)
+            pl.atomic_add(output_ref, (target,), contrib)
+            return None
+
+        jax.lax.fori_loop(0, max_syn, _body, None)
+
+    return kernel
+
+
+def pallas_event_driven_input(
+    csc: CSCWeights,
+    spikes: Array,
+    max_active: int = 5000,
+) -> Array:
+    """Event-driven synaptic input using a Pallas GPU kernel.
+
+    Each Pallas grid block processes one spiking neuron, iterating over
+    its CSC column range and using atomic_add to accumulate contributions.
+    Falls back to CSC v2 if Pallas is not available or fails.
+    """
+    if not _PALLAS_AVAILABLE:
+        return csc_event_driven_input_v2(csc, spikes, max_active)
+
+    max_syn = csc.max_synapses_per_neuron
+    n_post = csc.n_post
+    nnz = csc.data.shape[0]
+
+    if max_syn == 0:
+        return jnp.zeros(n_post, dtype=jnp.float32)
+
+    spike_mask = spikes > 0
+    active_indices = jnp.where(spike_mask, size=max_active, fill_value=0)[0].astype(jnp.int32)
+    n_active = jnp.sum(spike_mask.astype(jnp.int32))
+    active_valid = (jnp.arange(max_active) < n_active).astype(jnp.int32)
+
+    try:
+        kernel_fn = _make_pallas_csc_kernel(max_syn, nnz)
+        _no = pl.no_block_spec
+        output = pl.pallas_call(
+            kernel_fn,
+            out_shape=jax.ShapeDtypeStruct((n_post,), jnp.float32),
+            grid=(max_active,),
+            in_specs=[_no, _no, _no, _no, _no, _no],
+            out_specs=_no,
+        )(
+            csc.col_ptr, csc.row_indices, csc.data,
+            spikes, active_indices, active_valid,
+        )
+        return output
+    except (TypeError, AttributeError, NotImplementedError) as e:
+        # Pallas API mismatch — fall back gracefully
+        return csc_event_driven_input_v2(csc, spikes, max_active)
+
+
+# ---------------------------------------------------------------------------
+# Top-level dispatcher
 # ---------------------------------------------------------------------------
 
 
@@ -262,27 +425,105 @@ def event_driven_input(
 ) -> Array:
     """Compute synaptic input ``W @ spikes`` using event-driven CSC access.
 
-    This is the top-level entry point.  It dispatches to the best available
-    implementation:
-
-    1. Pallas GPU kernel (if available and on GPU) -- future enhancement
-    2. CSC event-driven kernel using standard JAX ops (default)
-
-    Parameters
-    ----------
-    csc : CSCWeights
-        Pre-converted CSC weight matrix.
-    spikes : Array, shape ``(N_pre,)``
-        Presynaptic spike vector.
-    max_active : int
-        Maximum simultaneously active neurons.
-
-    Returns
-    -------
-    Array, shape ``(n_post,)``
-        Synaptic input per postsynaptic neuron.
+    Dispatches to the best available implementation:
+    1. Pallas GPU kernel (if available and on GPU)
+    2. CSC v2 flat gather (default)
+    3. CSC v1 2D padded gather (legacy fallback)
     """
-    # Future: add Pallas dispatch here when available
-    # if _PALLAS_AVAILABLE and jax.default_backend() == "gpu":
-    #     return _pallas_event_driven_input(csc, spikes, max_active)
-    return csc_event_driven_input(csc, spikes, max_active)
+    if _PALLAS_AVAILABLE and jax.default_backend() == "gpu":
+        return pallas_event_driven_input(csc, spikes, max_active)
+    return csc_event_driven_input_v2(csc, spikes, max_active)
+
+
+# ---------------------------------------------------------------------------
+# Benchmarking
+# ---------------------------------------------------------------------------
+
+
+def benchmark_event_driven(
+    n_neurons: int = 50000,
+    nnz_per_neuron: int = 330,
+    spike_rate: float = 0.001,
+    n_repeats: int = 50,
+) -> dict:
+    """Benchmark all sparse matmul implementations.
+
+    Returns dict with timing results for BCOO, CSC v1, CSC v2, and Pallas.
+    """
+    import time as _time
+
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    N = n_neurons
+    nnz = N * nnz_per_neuron
+
+    # Random sparse matrix in COO
+    rows = rng.integers(0, N, size=nnz).astype(np.int32)
+    cols = rng.integers(0, N, size=nnz).astype(np.int32)
+    data = rng.uniform(0.01, 0.1, size=nnz).astype(np.float32)
+
+    # Build BCOO
+    indices = jnp.stack([jnp.array(rows), jnp.array(cols)], axis=1)
+    W_bcoo = BCOO((jnp.array(data), indices), shape=(N, N))
+
+    # Build CSC
+    csc = bcoo_to_csc(W_bcoo)
+
+    # Spike vector
+    spikes = (jax.random.uniform(jax.random.PRNGKey(0), (N,)) < spike_rate).astype(jnp.float32)
+    n_spikes = int(jnp.sum(spikes))
+    print(f"  N={N}, NNZ={nnz:,}, spikes={n_spikes}")
+
+    results = {}
+
+    # BCOO matmul
+    _ = (W_bcoo @ spikes).block_until_ready()
+    t0 = _time.perf_counter()
+    for _ in range(n_repeats):
+        (W_bcoo @ spikes).block_until_ready()
+    results["bcoo_ms"] = (_time.perf_counter() - t0) / n_repeats * 1000
+
+    # CSC v1
+    _ = csc_event_driven_input(csc, spikes, max_active=max(n_spikes * 2, 100)).block_until_ready()
+    ma = max(n_spikes * 2, 100)
+    t0 = _time.perf_counter()
+    for _ in range(n_repeats):
+        csc_event_driven_input(csc, spikes, max_active=ma).block_until_ready()
+    results["csc_v1_ms"] = (_time.perf_counter() - t0) / n_repeats * 1000
+
+    # CSC v2
+    mst = max(n_spikes * nnz_per_neuron * 2, 1000)
+    _ = csc_event_driven_input_v2(csc, spikes, max_active=ma, max_synapses_total=mst).block_until_ready()
+    t0 = _time.perf_counter()
+    for _ in range(n_repeats):
+        csc_event_driven_input_v2(csc, spikes, max_active=ma, max_synapses_total=mst).block_until_ready()
+    results["csc_v2_ms"] = (_time.perf_counter() - t0) / n_repeats * 1000
+
+    # Pallas (if available)
+    if _PALLAS_AVAILABLE and jax.default_backend() == "gpu":
+        try:
+            _ = pallas_event_driven_input(csc, spikes, max_active=ma).block_until_ready()
+            t0 = _time.perf_counter()
+            for _ in range(n_repeats):
+                pallas_event_driven_input(csc, spikes, max_active=ma).block_until_ready()
+            results["pallas_ms"] = (_time.perf_counter() - t0) / n_repeats * 1000
+        except Exception as e:
+            results["pallas_ms"] = f"FAILED: {e}"
+
+    return results
+
+
+if __name__ == "__main__":
+    print("=" * 60)
+    print("BL-1 Event-Driven Sparse Matmul Benchmark")
+    print("=" * 60)
+
+    for n in [10_000, 50_000, 100_000]:
+        print(f"\n--- {n:,} neurons ---")
+        r = benchmark_event_driven(n_neurons=n)
+        for k, v in r.items():
+            if isinstance(v, float):
+                print(f"  {k:<15s}: {v:.3f} ms")
+            else:
+                print(f"  {k:<15s}: {v}")

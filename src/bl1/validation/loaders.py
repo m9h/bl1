@@ -334,20 +334,22 @@ def _maxwell_read_spikes(f) -> tuple[np.ndarray, np.ndarray]:
         spike_channels = np.asarray(f["spikeChannels"], dtype=np.int64)
         return spike_samples, spike_channels
 
-    # Alternative: compound dataset with fields
+    # Alternative: compound dataset with fields (frameno, channel, ...)
+    # Check both "spikes" and "spikeTimes" keys (Sharf 2022 uses the latter)
     for group_name in ("proc0", ""):
         grp = f[group_name] if group_name else f
-        if "spikes" in grp:
-            spikes = grp["spikes"]
-            if (
-                hasattr(spikes.dtype, "names")
-                and spikes.dtype.names is not None
-                and "frameno" in spikes.dtype.names
-                and "channel" in spikes.dtype.names
-            ):
-                spike_samples = np.asarray(spikes["frameno"], dtype=np.int64)
-                spike_channels = np.asarray(spikes["channel"], dtype=np.int64)
-                return spike_samples, spike_channels
+        for ds_name in ("spikes", "spikeTimes"):
+            if ds_name in grp:
+                ds = grp[ds_name]
+                if (
+                    hasattr(ds.dtype, "names")
+                    and ds.dtype.names is not None
+                    and "frameno" in ds.dtype.names
+                    and "channel" in ds.dtype.names
+                ):
+                    spike_samples = np.asarray(ds["frameno"], dtype=np.int64)
+                    spike_channels = np.asarray(ds["channel"], dtype=np.int64)
+                    return spike_samples, spike_channels
 
     raise KeyError(
         "Could not locate spike data in the HDF5 file.  "

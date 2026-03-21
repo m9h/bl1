@@ -214,15 +214,14 @@ def simulate(
     if surrogate and surrogate_fn is None:
         surrogate_fn = superspike_threshold
 
-    # When using surrogate, cast init_state.spikes to float32 so the
-    # scan carry pytree is consistent (izhikevich_step_surrogate returns
-    # float32 spikes).
-    if surrogate:
-        init_state = NeuronState(
-            v=init_state.v,
-            u=init_state.u,
-            spikes=init_state.spikes.astype(jnp.float32),
-        )
+    # Always cast init_state.spikes to float32 so the scan carry pytree
+    # is consistent (izhikevich_step returns bool, but we cast to float32
+    # inside the step function for dtype stability across JAX versions).
+    init_state = NeuronState(
+        v=init_state.v,
+        u=init_state.u,
+        spikes=init_state.spikes.astype(jnp.float32),
+    )
 
     if use_delays:
         # Compute max_delay BEFORE tracing (must be a concrete Python int)
@@ -451,7 +450,15 @@ def _simulate_no_delays(
                 g_gaba_b_decay=new_gaba_b_decay,
             )
 
-            # 5. Optional plasticity update
+            # 5. Ensure spikes are float32 for scan carry consistency
+            #    (izhikevich_step returns bool, but carry dtype must be stable)
+            neuron_state = NeuronState(
+                v=neuron_state.v,
+                u=neuron_state.u,
+                spikes=neuron_state.spikes.astype(jnp.float32),
+            )
+
+            # 6. Optional plasticity update
             if plasticity_fn is not None:
                 s_stdp, w_exc = plasticity_fn(s_stdp, neuron_state.spikes, w_exc)
 
