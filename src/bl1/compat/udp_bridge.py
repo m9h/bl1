@@ -187,7 +187,9 @@ class VirtualCL1Server:
 
             self._monitor = ActivityMonitor(n_neurons=n_neurons)
             self._mjpeg = NeuralMJPEGServer(
-                host=vis_host, port=vis_port, path="/neural.mjpeg",
+                host=vis_host,
+                port=vis_port,
+                path="/neural.mjpeg",
             )
             self._vis_port = vis_port
 
@@ -298,15 +300,10 @@ class VirtualCL1Server:
         pop_diff = population_rate - self._pop_rate_mean
         self._pop_rate_mean += self._pop_rate_alpha * pop_diff
         self._pop_rate_var = (
-            (1.0 - self._pop_rate_alpha) * self._pop_rate_var
-            + self._pop_rate_alpha * pop_diff * pop_diff
-        )
-        pop_std = max(self._pop_rate_var ** 0.5, 1e-6)
-        burst_active = (
-            1.0
-            if population_rate > (self._pop_rate_mean + 1.5 * pop_std)
-            else 0.0
-        )
+            1.0 - self._pop_rate_alpha
+        ) * self._pop_rate_var + self._pop_rate_alpha * pop_diff * pop_diff
+        pop_std = max(self._pop_rate_var**0.5, 1e-6)
+        burst_active = 1.0 if population_rate > (self._pop_rate_mean + 1.5 * pop_std) else 0.0
 
         # -- Synchrony index (Fano factor across electrodes) -------------------
         # Fano factor = var(counts) / mean(counts).  When all electrodes fire
@@ -400,9 +397,7 @@ class VirtualCL1Server:
                         timestamp=time.monotonic(),
                     )
                     # Render every N ticks to achieve vis_fps
-                    render_interval = max(
-                        self.tick_frequency_hz // self.vis_fps, 1
-                    )
+                    render_interval = max(self.tick_frequency_hz // self.vis_fps, 1)
                     if tick_count % render_interval == 0:
                         frame = self._monitor.render_frame()
                         self._mjpeg.update_frame(frame)
@@ -420,7 +415,9 @@ class VirtualCL1Server:
                 # Send extended stats packet (non-critical, never blocks)
                 if stats_sock is not None:
                     self._compute_and_send_stats(
-                        spike_counts, stats_sock, timestamp_us,
+                        spike_counts,
+                        stats_sock,
+                        timestamp_us,
                     )
 
                 try:
@@ -481,28 +478,38 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     # Extended neural stats
     parser.add_argument(
-        "--stats-port", type=int, default=STATS_PORT,
+        "--stats-port",
+        type=int,
+        default=STATS_PORT,
         help=f"UDP port for extended neural stats (default: {STATS_PORT})",
     )
     parser.add_argument(
-        "--no-stats", action="store_true",
+        "--no-stats",
+        action="store_true",
         help="Disable extended neural stats packet (port 12351)",
     )
     # Visualization
     parser.add_argument(
-        "--vis-port", type=int, default=12350,
+        "--vis-port",
+        type=int,
+        default=12350,
         help="Neural visualization MJPEG port (default: 12350)",
     )
     parser.add_argument(
-        "--vis-host", type=str, default="0.0.0.0",
+        "--vis-host",
+        type=str,
+        default="0.0.0.0",
         help="Neural visualization bind address (default: 0.0.0.0)",
     )
     parser.add_argument(
-        "--no-vis", action="store_true",
+        "--no-vis",
+        action="store_true",
         help="Disable neural visualization MJPEG stream",
     )
     parser.add_argument(
-        "--vis-fps", type=int, default=3,
+        "--vis-fps",
+        type=int,
+        default=3,
         help="Visualization render rate in Hz (default: 3)",
     )
     args = parser.parse_args()

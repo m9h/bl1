@@ -46,6 +46,7 @@ spikeinterface = [
 ]
 vizdoom = [
     "vizdoom>=1.2.0",
+    "opencv-python>=4.8",
 ]
 docs = [
     "sphinx>=7.0",
@@ -144,3 +145,6 @@ exclude = ["tests", "notebooks", "benchmarks", "scripts"]
 [tool.vulture]
 min_confidence = 90
 exclude = ["tests/", "notebooks/", "benchmarks/", "scripts/"]
+# Intentionally-unused params: public plotting kwarg, context-manager *exc,
+# and a BaseHTTPRequestHandler.log_message override.
+ignore_names = ["colorby", "exc", "format"]

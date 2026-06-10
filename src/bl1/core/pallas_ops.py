@@ -293,8 +293,8 @@ def csc_event_driven_input_v2(
     active_valid = jnp.arange(max_active) < n_active
 
     # 2. Compute synapse counts and offsets for each active neuron
-    starts = csc.col_ptr[active_indices]       # (max_active,)
-    ends = csc.col_ptr[active_indices + 1]     # (max_active,)
+    starts = csc.col_ptr[active_indices]  # (max_active,)
+    ends = csc.col_ptr[active_indices + 1]  # (max_active,)
     counts = jnp.where(active_valid, ends - starts, 0)  # (max_active,)
 
     # Exclusive prefix sum to get flat output offsets
@@ -303,15 +303,22 @@ def csc_event_driven_input_v2(
     # 3. Build flat synapse index array using repeat-based expansion
     # For each active neuron i, generate indices [starts[i], starts[i]+1, ..., ends[i]-1]
     # Expand to flat array of size max_synapses_total
-    neuron_ids = jnp.repeat(jnp.arange(max_active), counts, total_repeat_length=max_synapses_total)
-    within_offsets = jnp.arange(max_synapses_total) - jnp.repeat(offsets, counts, total_repeat_length=max_synapses_total)
+    within_offsets = jnp.arange(max_synapses_total) - jnp.repeat(
+        offsets, counts, total_repeat_length=max_synapses_total
+    )
 
-    flat_syn_indices = jnp.repeat(starts, counts, total_repeat_length=max_synapses_total) + within_offsets
+    flat_syn_indices = (
+        jnp.repeat(starts, counts, total_repeat_length=max_synapses_total) + within_offsets
+    )
 
     # Validity: the synapse index must be within [starts[i], ends[i]) and within nnz
     flat_ends = jnp.repeat(ends, counts, total_repeat_length=max_synapses_total)
     total_active_synapses = jnp.sum(counts)
-    flat_valid = (jnp.arange(max_synapses_total) < total_active_synapses) & (flat_syn_indices < flat_ends) & (flat_syn_indices < nnz)
+    flat_valid = (
+        (jnp.arange(max_synapses_total) < total_active_synapses)
+        & (flat_syn_indices < flat_ends)
+        & (flat_syn_indices < nnz)
+    )
 
     # Safe indices for gather
     safe_indices = jnp.where(flat_valid, flat_syn_indices, 0)
@@ -404,11 +411,15 @@ def pallas_event_driven_input(
             in_specs=[_no, _no, _no, _no, _no, _no],
             out_specs=_no,
         )(
-            csc.col_ptr, csc.row_indices, csc.data,
-            spikes, active_indices, active_valid,
+            csc.col_ptr,
+            csc.row_indices,
+            csc.data,
+            spikes,
+            active_indices,
+            active_valid,
         )
         return output
-    except (TypeError, AttributeError, NotImplementedError) as e:
+    except (TypeError, AttributeError, NotImplementedError):
         # Pallas API mismatch — fall back gracefully
         return csc_event_driven_input_v2(csc, spikes, max_active)
 
@@ -494,10 +505,14 @@ def benchmark_event_driven(
 
     # CSC v2
     mst = max(n_spikes * nnz_per_neuron * 2, 1000)
-    _ = csc_event_driven_input_v2(csc, spikes, max_active=ma, max_synapses_total=mst).block_until_ready()
+    _ = csc_event_driven_input_v2(
+        csc, spikes, max_active=ma, max_synapses_total=mst
+    ).block_until_ready()
     t0 = _time.perf_counter()
     for _ in range(n_repeats):
-        csc_event_driven_input_v2(csc, spikes, max_active=ma, max_synapses_total=mst).block_until_ready()
+        csc_event_driven_input_v2(
+            csc, spikes, max_active=ma, max_synapses_total=mst
+        ).block_until_ready()
     results["csc_v2_ms"] = (_time.perf_counter() - t0) / n_repeats * 1000
 
     # Pallas (if available)

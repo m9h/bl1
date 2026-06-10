@@ -84,7 +84,7 @@ class TrainingConfig:
 
     # Short-term plasticity (Tsodyks-Markram)
     use_stp: bool = True
-    U_exc: float = 0.30   # baseline release probability (excitatory)
+    U_exc: float = 0.30  # baseline release probability (excitatory)
     tau_rec: float = 800.0  # recovery time constant in ms
 
     # Weight clamping
@@ -191,7 +191,7 @@ def culture_loss(
     # Use mean of squares of non-zero weights to avoid scale dependence
     exc_nnz = jnp.sum(W_exc > 0) + 1.0
     inh_nnz = jnp.sum(W_inh > 0) + 1.0
-    loss_reg = jnp.sum(W_exc ** 2) / exc_nnz + jnp.sum(W_inh ** 2) / inh_nnz
+    loss_reg = jnp.sum(W_exc**2) / exc_nnz + jnp.sum(W_inh**2) / inh_nnz
 
     # --- Total ---
     total = (
@@ -386,13 +386,17 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
             noise_amp = target * 1.0 + 0.3
             weight_scale = 0.50
         noise_amp = max(min(noise_amp, 15.0), 0.15)
-        print(f"Auto-noise: I_noise={noise_amp:.2f}, ws={weight_scale:.2f} "
-              f"(target FR={config.target_firing_rate_hz:.2f} Hz)")
+        print(
+            f"Auto-noise: I_noise={noise_amp:.2f}, ws={weight_scale:.2f} "
+            f"(target FR={config.target_firing_rate_hz:.2f} Hz)"
+        )
 
     print(f"Building network: {config.n_neurons} neurons, E/I ratio {config.ei_ratio:.1%}")
     t0 = time.time()
 
-    params, init_state_template, W_exc, W_inh, exc_mask, inh_mask, is_excitatory = _build_network(config)
+    params, init_state_template, W_exc, W_inh, exc_mask, inh_mask, is_excitatory = _build_network(
+        config
+    )
 
     # Create STP params if enabled (Tsodyks-Markram synaptic depression/facilitation)
     stp_params = None
@@ -419,18 +423,23 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
     # None.
     if config.mesh is not None:
         from bl1.training.sharding import shard_network
+
         sharded = shard_network(
             config.mesh,
-            W_exc=W_exc, W_inh=W_inh,
+            W_exc=W_exc,
+            W_inh=W_inh,
             init_state=init_state_template,
         )
         W_exc = sharded.W_exc
         W_inh = sharded.W_inh
         init_state_template = NeuronState(
-            v=sharded.v, u=sharded.u, spikes=sharded.spikes,
+            v=sharded.v,
+            u=sharded.u,
+            spikes=sharded.spikes,
         )
-        print(f"  Sharded across {config.mesh.size} device(s) on axis "
-              f"{config.mesh.axis_names[0]!r}")
+        print(
+            f"  Sharded across {config.mesh.size} device(s) on axis {config.mesh.axis_names[0]!r}"
+        )
 
     n_exc = int(jnp.sum(exc_mask > 0))
     n_inh = int(jnp.sum(inh_mask > 0))
@@ -464,22 +473,24 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
     # --- Trackio experiment tracking (optional) ---
     _tracker = tracker  # from function parameter
     if _tracker is not None:
-        _tracker.log({
-            "config/n_neurons": config.n_neurons,
-            "config/sim_duration_ms": config.sim_duration_ms,
-            "config/learning_rate": config.learning_rate,
-            "config/n_epochs": config.n_epochs,
-            "config/target_fr_hz": config.target_firing_rate_hz,
-            "config/target_burst_per_min": config.target_burst_rate_per_min,
-            "config/surrogate_beta": config.surrogate_beta,
-            "config/init_weight_scale": config.init_weight_scale,
-            "config/I_noise_amplitude": config.I_noise_amplitude,
-            "config/use_stp": config.use_stp,
-            "config/U_exc": config.U_exc,
-            "config/tau_rec": config.tau_rec,
-            "network/exc_synapses": n_exc,
-            "network/inh_synapses": n_inh,
-        })
+        _tracker.log(
+            {
+                "config/n_neurons": config.n_neurons,
+                "config/sim_duration_ms": config.sim_duration_ms,
+                "config/learning_rate": config.learning_rate,
+                "config/n_epochs": config.n_epochs,
+                "config/target_fr_hz": config.target_firing_rate_hz,
+                "config/target_burst_per_min": config.target_burst_rate_per_min,
+                "config/surrogate_beta": config.surrogate_beta,
+                "config/init_weight_scale": config.init_weight_scale,
+                "config/I_noise_amplitude": config.I_noise_amplitude,
+                "config/use_stp": config.use_stp,
+                "config/U_exc": config.U_exc,
+                "config/tau_rec": config.tau_rec,
+                "network/exc_synapses": n_exc,
+                "network/inh_synapses": n_inh,
+            }
+        )
 
     print(
         f"\nTraining for {config.n_epochs} epochs "
@@ -492,9 +503,7 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
         epoch_t0 = time.time()
 
         rng, key_noise, key_state = jax.random.split(rng, 3)
-        I_external = noise_amp * jax.random.normal(
-            key_noise, shape=(n_steps, config.n_neurons)
-        )
+        I_external = noise_amp * jax.random.normal(key_noise, shape=(n_steps, config.n_neurons))
 
         v_init = -65.0 + 5.0 * jax.random.normal(key_state, shape=(config.n_neurons,))
         init_state = NeuronState(
@@ -504,10 +513,18 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
         )
 
         W_exc, W_inh, opt_state_exc, opt_state_inh, loss, components = train_step_jit(
-            W_exc, W_inh,
-            opt_state_exc, opt_state_inh,
-            params, init_state, syn_state, I_external,
-            config, optimizer, exc_mask, inh_mask,
+            W_exc,
+            W_inh,
+            opt_state_exc,
+            opt_state_inh,
+            params,
+            init_state,
+            syn_state,
+            I_external,
+            config,
+            optimizer,
+            exc_mask,
+            inh_mask,
             stp_params,
         )
 
@@ -524,20 +541,22 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
 
         # Log to trackio every epoch
         if _tracker is not None:
-            _tracker.log({
-                "train/loss": loss_val,
-                "train/firing_rate_hz": epoch_record["mean_fr_hz"],
-                "train/burst_rate_per_min": epoch_record["burst_rate_per_min"],
-                "train/L_firing_rate": epoch_record["firing_rate"],
-                "train/L_burst_rate": epoch_record["burst_rate"],
-                "train/L_synchrony": epoch_record["synchrony"],
-                "train/L_weight_reg": epoch_record["weight_reg"],
-                "train/epoch_time_s": epoch_record["wall_time_s"],
-                "train/nan_count": nan_count,
-            })
+            _tracker.log(
+                {
+                    "train/loss": loss_val,
+                    "train/firing_rate_hz": epoch_record["mean_fr_hz"],
+                    "train/burst_rate_per_min": epoch_record["burst_rate_per_min"],
+                    "train/L_firing_rate": epoch_record["firing_rate"],
+                    "train/L_burst_rate": epoch_record["burst_rate"],
+                    "train/L_synchrony": epoch_record["synchrony"],
+                    "train/L_weight_reg": epoch_record["weight_reg"],
+                    "train/epoch_time_s": epoch_record["wall_time_s"],
+                    "train/nan_count": nan_count,
+                }
+            )
 
         if epoch % 10 == 0 or epoch == config.n_epochs - 1:
-            fr = epoch_record['mean_fr_hz']
+            fr = epoch_record["mean_fr_hz"]
             print(
                 f"Epoch {epoch:4d}/{config.n_epochs} | "
                 f"loss={loss_val:8.4f} | "
@@ -561,8 +580,12 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
 
     final = loss_history[-1]
     print(f"Final loss: {final['total']:.4f}")
-    print(f"Final firing rate: {final['mean_fr_hz']:.2f} Hz (target: {config.target_firing_rate_hz} Hz)")
-    print(f"Final burst rate: {final['burst_rate_per_min']:.1f}/min (target: {config.target_burst_rate_per_min}/min)")
+    print(
+        f"Final firing rate: {final['mean_fr_hz']:.2f} Hz (target: {config.target_firing_rate_hz} Hz)"
+    )
+    print(
+        f"Final burst rate: {final['burst_rate_per_min']:.1f}/min (target: {config.target_burst_rate_per_min}/min)"
+    )
 
     w_exc_vals = W_exc[exc_mask > 0]
     w_inh_vals = W_inh[inh_mask > 0]
@@ -574,17 +597,19 @@ def train_weights(config: TrainingConfig | None = None, tracker=None) -> Trainin
     print(f"W_inh: mean={w_inh_mean:.4f}, max={w_inh_max:.4f}")
 
     if _tracker is not None:
-        _tracker.log({
-            "final/loss": final["total"],
-            "final/firing_rate_hz": final["mean_fr_hz"],
-            "final/burst_rate_per_min": final["burst_rate_per_min"],
-            "final/w_exc_mean": w_exc_mean,
-            "final/w_exc_max": w_exc_max,
-            "final/w_inh_mean": w_inh_mean,
-            "final/w_inh_max": w_inh_max,
-            "final/total_time_s": total_time,
-            "final/n_epochs_completed": len(loss_history),
-        })
+        _tracker.log(
+            {
+                "final/loss": final["total"],
+                "final/firing_rate_hz": final["mean_fr_hz"],
+                "final/burst_rate_per_min": final["burst_rate_per_min"],
+                "final/w_exc_mean": w_exc_mean,
+                "final/w_exc_max": w_exc_max,
+                "final/w_inh_mean": w_inh_mean,
+                "final/w_inh_max": w_inh_max,
+                "final/total_time_s": total_time,
+                "final/n_epochs_completed": len(loss_history),
+            }
+        )
 
     return TrainingResult(
         W_exc=W_exc,

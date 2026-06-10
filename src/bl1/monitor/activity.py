@@ -32,7 +32,6 @@ import numpy as np
 
 from bl1.monitor.style import (
     CHANNEL_COLOR_LIST,
-    CHANNEL_GROUP_NAMES,
     MONITOR_DPI,
     TEXT_COLOR,
     apply_dark_theme,
@@ -155,9 +154,7 @@ class ActivityMonitor:
             self._spike_counts[h] = np.asarray(spike_counts, dtype=np.float32)
 
             if electrode_spikes is not None:
-                self._electrode_spikes[h] = np.asarray(
-                    electrode_spikes, dtype=np.float32
-                )
+                self._electrode_spikes[h] = np.asarray(electrode_spikes, dtype=np.float32)
             else:
                 self._electrode_spikes[h] = 0.0
 
@@ -222,8 +219,14 @@ class ActivityMonitor:
             return CHANNEL_COLOR_LIST[idx]
         # Fallback for extra groups.
         fallback = [
-            "#FFFFFF", "#AAAAAA", "#66BB6A", "#AB47BC",
-            "#EF5350", "#26A69A", "#FFA726", "#78909C",
+            "#FFFFFF",
+            "#AAAAAA",
+            "#66BB6A",
+            "#AB47BC",
+            "#EF5350",
+            "#26A69A",
+            "#FFA726",
+            "#78909C",
         ]
         return fallback[idx % len(fallback)]
 
@@ -289,9 +292,7 @@ class ActivityMonitor:
                 if c > 0:
                     t_spikes.extend([t] * c)
                     # Jitter neurons within the group band.
-                    n_spikes.extend(
-                        (g + np.random.uniform(-0.35, 0.35, size=c)).tolist()
-                    )
+                    n_spikes.extend((g + np.random.uniform(-0.35, 0.35, size=c)).tolist())
             if t_spikes:
                 ax.scatter(
                     t_spikes,

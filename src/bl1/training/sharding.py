@@ -48,10 +48,8 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 import jax
-import jax.numpy as jnp
 from jax import Array
 from jax.sharding import Mesh, NamedSharding, PartitionSpec
-
 
 # Axis name used throughout: the contiguous slab of *neurons* a device owns.
 NEURON_AXIS = "neuron"
@@ -121,6 +119,7 @@ class ShardedNetwork(NamedTuple):
     Fields with ``None`` are not sharded (caller passed ``None`` for that
     array).  Keep this class light -- it carries arrays, not the model.
     """
+
     mesh: Mesh
     W_exc: Array | None
     W_inh: Array | None
@@ -155,11 +154,7 @@ def shard_network(
     """
     W_exc_s = _put(W_exc, mesh, neuron_spec_2d()) if W_exc is not None else None
     W_inh_s = _put(W_inh, mesh, neuron_spec_2d()) if W_inh is not None else None
-    I_s = (
-        _put(I_external, mesh, external_current_spec())
-        if I_external is not None
-        else None
-    )
+    I_s = _put(I_external, mesh, external_current_spec()) if I_external is not None else None
 
     v_s = u_s = spk_s = None
     if init_state is not None:

@@ -157,18 +157,15 @@ def pack_neural_stats(
 
     if electrode_spikes.shape != (NUM_ELECTRODES,):
         raise ValueError(
-            f"electrode_spikes must have shape ({NUM_ELECTRODES},), "
-            f"got {electrode_spikes.shape}"
+            f"electrode_spikes must have shape ({NUM_ELECTRODES},), got {electrode_spikes.shape}"
         )
     if firing_rates.shape != (NUM_CHANNEL_SETS,):
         raise ValueError(
-            f"firing_rates must have shape ({NUM_CHANNEL_SETS},), "
-            f"got {firing_rates.shape}"
+            f"firing_rates must have shape ({NUM_CHANNEL_SETS},), got {firing_rates.shape}"
         )
     if stim_amplitudes.shape != (NUM_CHANNEL_SETS,):
         raise ValueError(
-            f"stim_amplitudes must have shape ({NUM_CHANNEL_SETS},), "
-            f"got {stim_amplitudes.shape}"
+            f"stim_amplitudes must have shape ({NUM_CHANNEL_SETS},), got {stim_amplitudes.shape}"
         )
 
     packet = struct.pack(
@@ -223,40 +220,40 @@ def unpack_neural_stats(packet: bytes) -> dict[str, Any]:
         If *packet* has an unexpected size.
     """
     if len(packet) != STATS_PACKET_SIZE:
-        raise ValueError(
-            f"Expected {STATS_PACKET_SIZE} bytes, got {len(packet)}"
-        )
+        raise ValueError(f"Expected {STATS_PACKET_SIZE} bytes, got {len(packet)}")
 
     values = struct.unpack(STATS_FORMAT, packet)
 
     # Walk through the flat tuple using offsets
     idx = 0
 
-    timestamp_us = values[idx]; idx += 1
-    version = values[idx]; idx += 1
-    n_electrodes = values[idx]; idx += 1
-    tick_number = values[idx]; idx += 1
+    timestamp_us = values[idx]
+    idx += 1
+    version = values[idx]
+    idx += 1
+    n_electrodes = values[idx]
+    idx += 1
+    tick_number = values[idx]
+    idx += 1
 
-    electrode_spikes = np.array(
-        values[idx : idx + NUM_ELECTRODES], dtype=np.float32
-    )
+    electrode_spikes = np.array(values[idx : idx + NUM_ELECTRODES], dtype=np.float32)
     idx += NUM_ELECTRODES
 
-    firing_rates = np.array(
-        values[idx : idx + NUM_CHANNEL_SETS], dtype=np.float32
-    )
+    firing_rates = np.array(values[idx : idx + NUM_CHANNEL_SETS], dtype=np.float32)
     idx += NUM_CHANNEL_SETS
 
-    population_rate = values[idx]; idx += 1
-    burst_active = values[idx]; idx += 1
-    synchrony_index = values[idx]; idx += 1
+    population_rate = values[idx]
+    idx += 1
+    burst_active = values[idx]
+    idx += 1
+    synchrony_index = values[idx]
+    idx += 1
 
-    stim_amplitudes = np.array(
-        values[idx : idx + NUM_CHANNEL_SETS], dtype=np.float32
-    )
+    stim_amplitudes = np.array(values[idx : idx + NUM_CHANNEL_SETS], dtype=np.float32)
     idx += NUM_CHANNEL_SETS
 
-    total_neuron_spikes = values[idx]; idx += 1
+    total_neuron_spikes = values[idx]
+    idx += 1
 
     return {
         "timestamp_us": timestamp_us,

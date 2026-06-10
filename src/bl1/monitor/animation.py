@@ -11,7 +11,8 @@ custom overlays: ``callback(fig, axes_dict, frame_index)``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -114,7 +115,9 @@ def animate_session(
         # methods with the appropriate window and then adjusting xlim.
         monitor.plot_raster(fig=fig, ax=axes_dict["raster"], window_s=window_s)
         monitor.plot_mountain(fig=fig, ax=axes_dict["mountain"], window_s=window_s)
-        monitor.plot_mea_heatmap(fig=fig, ax=axes_dict["mea"], window_s=min(window_s, 2.0), _colorbar=False)
+        monitor.plot_mea_heatmap(
+            fig=fig, ax=axes_dict["mea"], window_s=min(window_s, 2.0), _colorbar=False
+        )
         monitor.plot_firing_rates(fig=fig, ax=axes_dict["rates"], window_s=window_s)
 
         # Override xlim to simulate playback position.
@@ -123,8 +126,7 @@ def animate_session(
 
         apply_monitor_style(fig)
         fig.suptitle(
-            f"BL-1 Session Replay  t={t_now - t_start:.1f} s  "
-            f"({speed_up:.0f}x)",
+            f"BL-1 Session Replay  t={t_now - t_start:.1f} s  ({speed_up:.0f}x)",
             fontsize=11,
             color=TEXT_COLOR,
             fontweight="bold",

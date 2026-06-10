@@ -80,11 +80,12 @@ method.  :class:`UnifiedLogger` satisfies that interface directly:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import threading
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Union
 
 __all__ = ["UnifiedLogger", "TensorBoardAdapter"]
 
@@ -116,6 +117,7 @@ except ImportError:
 # Key normalisation helpers
 # ---------------------------------------------------------------------------
 
+
 def _to_tb_tag(key: str) -> str:
     """Convert a dot-delimited trackio key to a ``/``-delimited TensorBoard tag.
 
@@ -145,6 +147,7 @@ def _to_trackio_key(key: str) -> str:
 # ---------------------------------------------------------------------------
 # UnifiedLogger
 # ---------------------------------------------------------------------------
+
 
 class UnifiedLogger:
     """Dual-backend experiment logger (trackio + TensorBoard).
@@ -183,9 +186,9 @@ class UnifiedLogger:
     def __init__(
         self,
         project: str = "experiment",
-        run_name: Optional[str] = None,
+        run_name: str | None = None,
         log_dir: Union[str, Path] = "./logs",
-        config: Optional[Dict[str, Any]] = None,
+        config: dict[str, Any] | None = None,
         use_trackio: bool = True,
         use_tensorboard: bool = True,
     ) -> None:
@@ -276,7 +279,7 @@ class UnifiedLogger:
     # Core logging
     # ------------------------------------------------------------------
 
-    def _resolve_step(self, step: Optional[int]) -> int:
+    def _resolve_step(self, step: int | None) -> int:
         """Return *step* if given, otherwise auto-increment."""
         if step is not None:
             self._step = max(self._step, step)
@@ -288,7 +291,7 @@ class UnifiedLogger:
         self,
         key: str,
         value: float,
-        step: Optional[int] = None,
+        step: int | None = None,
     ) -> None:
         """Log a single scalar metric to both backends.
 
@@ -323,8 +326,8 @@ class UnifiedLogger:
 
     def log_scalars(
         self,
-        metrics: Dict[str, float],
-        step: Optional[int] = None,
+        metrics: dict[str, float],
+        step: int | None = None,
     ) -> None:
         """Log a dict of scalar metrics to both backends.
 
@@ -349,9 +352,7 @@ class UnifiedLogger:
 
             if self._trackio_run is not None:
                 try:
-                    trackio_dict = {
-                        _to_trackio_key(k): float(v) for k, v in metrics.items()
-                    }
+                    trackio_dict = {_to_trackio_key(k): float(v) for k, v in metrics.items()}
                     self._trackio_run.log(trackio_dict)
                 except Exception:
                     _log.exception("trackio.log failed for batch of %d metrics", len(metrics))
@@ -363,7 +364,7 @@ class UnifiedLogger:
                     except Exception:
                         _log.exception("TensorBoard add_scalar failed for key=%s", k)
 
-    def log(self, metrics: Dict[str, float], step: Optional[int] = None) -> None:
+    def log(self, metrics: dict[str, float], step: int | None = None) -> None:
         """Log a dict of metrics -- trackio-compatible interface.
 
         This method exists so that a :class:`UnifiedLogger` instance can
@@ -385,7 +386,7 @@ class UnifiedLogger:
     # Config / hyperparameters
     # ------------------------------------------------------------------
 
-    def log_config(self, config: Dict[str, Any]) -> None:
+    def log_config(self, config: dict[str, Any]) -> None:
         """Log hyperparameters / configuration to both backends.
 
         Parameters
@@ -418,9 +419,7 @@ class UnifiedLogger:
 
             if self._tb_writer is not None:
                 try:
-                    hparam_dict = {
-                        k: _coerce_for_hparams(v) for k, v in config.items()
-                    }
+                    hparam_dict = {k: _coerce_for_hparams(v) for k, v in config.items()}
                     # add_hparams requires at least one metric
                     self._tb_writer.add_hparams(
                         hparam_dict,
@@ -437,7 +436,7 @@ class UnifiedLogger:
         self,
         tag: str,
         img_tensor: Any,
-        step: Optional[int] = None,
+        step: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Log an image to TensorBoard.
@@ -474,7 +473,7 @@ class UnifiedLogger:
         self,
         tag: str,
         values: Any,
-        step: Optional[int] = None,
+        step: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Log a histogram to TensorBoard.
@@ -503,7 +502,10 @@ class UnifiedLogger:
             if self._tb_writer is not None:
                 try:
                     self._tb_writer.add_histogram(
-                        _to_tb_tag(tag), values, s, **kwargs,
+                        _to_tb_tag(tag),
+                        values,
+                        s,
+                        **kwargs,
                     )
                 except Exception:
                     _log.exception("TensorBoard add_histogram failed for tag=%s", tag)
@@ -512,7 +514,7 @@ class UnifiedLogger:
         self,
         tag: str,
         text: str,
-        step: Optional[int] = None,
+        step: int | None = None,
     ) -> None:
         """Log text to TensorBoard.
 
@@ -577,7 +579,7 @@ class UnifiedLogger:
             # flushes on process exit.
             self._trackio_run = None
 
-    def __enter__(self) -> "UnifiedLogger":
+    def __enter__(self) -> UnifiedLogger:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -585,15 +587,14 @@ class UnifiedLogger:
 
     def __del__(self) -> None:
         # Best-effort cleanup
-        try:
+        with contextlib.suppress(Exception):
             self.close()
-        except Exception:
-            pass
 
 
 # ---------------------------------------------------------------------------
 # TensorBoardAdapter -- drop-in replacement for SummaryWriter
 # ---------------------------------------------------------------------------
+
 
 class TensorBoardAdapter:
     """Drop-in replacement for ``torch.utils.tensorboard.SummaryWriter``
@@ -643,11 +644,11 @@ class TensorBoardAdapter:
         self,
         log_dir: Union[str, Path] = "./logs",
         project: str = "experiment",
-        run_name: Optional[str] = None,
-        config: Optional[Dict[str, Any]] = None,
+        run_name: str | None = None,
+        config: dict[str, Any] | None = None,
         use_trackio: bool = True,
         use_tensorboard: bool = True,
-        purge_step: Optional[int] = None,
+        purge_step: int | None = None,
         **kwargs: Any,
     ) -> None:
         self._logger = UnifiedLogger(
@@ -678,7 +679,7 @@ class TensorBoardAdapter:
         self,
         tag: str,
         scalar_value: float,
-        global_step: Optional[int] = None,
+        global_step: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Log a scalar value (mirrors ``SummaryWriter.add_scalar``)."""
@@ -687,8 +688,8 @@ class TensorBoardAdapter:
     def add_scalars(
         self,
         main_tag: str,
-        tag_scalar_dict: Dict[str, float],
-        global_step: Optional[int] = None,
+        tag_scalar_dict: dict[str, float],
+        global_step: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Log multiple scalars under a group tag (mirrors ``SummaryWriter.add_scalars``)."""
@@ -699,7 +700,7 @@ class TensorBoardAdapter:
         self,
         tag: str,
         img_tensor: Any,
-        global_step: Optional[int] = None,
+        global_step: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Log an image (mirrors ``SummaryWriter.add_image``)."""
@@ -709,7 +710,7 @@ class TensorBoardAdapter:
         self,
         tag: str,
         values: Any,
-        global_step: Optional[int] = None,
+        global_step: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Log a histogram (mirrors ``SummaryWriter.add_histogram``)."""
@@ -719,7 +720,7 @@ class TensorBoardAdapter:
         self,
         tag: str,
         text_string: str,
-        global_step: Optional[int] = None,
+        global_step: int | None = None,
         **kwargs: Any,
     ) -> None:
         """Log text (mirrors ``SummaryWriter.add_text``)."""
@@ -727,8 +728,8 @@ class TensorBoardAdapter:
 
     def add_hparams(
         self,
-        hparam_dict: Dict[str, Any],
-        metric_dict: Optional[Dict[str, float]] = None,
+        hparam_dict: dict[str, Any],
+        metric_dict: dict[str, float] | None = None,
         **kwargs: Any,
     ) -> None:
         """Log hyperparameters (mirrors ``SummaryWriter.add_hparams``)."""
@@ -744,7 +745,7 @@ class TensorBoardAdapter:
         """Close all backends."""
         self._logger.close()
 
-    def __enter__(self) -> "TensorBoardAdapter":
+    def __enter__(self) -> TensorBoardAdapter:
         return self
 
     def __exit__(self, *exc: Any) -> None:
@@ -754,6 +755,7 @@ class TensorBoardAdapter:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _coerce_for_trackio(value: Any) -> Any:
     """Coerce a config value to a type trackio can serialise (JSON-safe)."""

@@ -23,7 +23,6 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 
-import cv2
 import numpy as np
 
 
@@ -82,9 +81,7 @@ class NeuralMJPEGServer:
                         if ts != last_ts and data is not None:
                             self.wfile.write(b"--frame\r\n")
                             self.wfile.write(b"Content-Type: image/jpeg\r\n")
-                            self.wfile.write(
-                                f"Content-Length: {len(data)}\r\n\r\n".encode()
-                            )
+                            self.wfile.write(f"Content-Length: {len(data)}\r\n\r\n".encode())
                             self.wfile.write(data)
                             self.wfile.write(b"\r\n")
                             self.wfile.flush()
@@ -108,9 +105,7 @@ class NeuralMJPEGServer:
             name="neural-mjpeg",
         )
         self._thread.start()
-        print(
-            f"Neural MJPEG stream at http://{self.host}:{self.port}{self.path}"
-        )
+        print(f"Neural MJPEG stream at http://{self.host}:{self.port}{self.path}")
 
     def update_frame(self, frame_rgb: np.ndarray):
         """Update the current frame (called from the simulation thread).
@@ -121,6 +116,8 @@ class NeuralMJPEGServer:
         Args:
             frame_rgb: ``(H, W, 3)`` uint8 array in RGB order.
         """
+        import cv2  # lazy: only the dashboard path needs OpenCV
+
         bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
         _, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 80])
         jpeg_bytes = buf.tobytes()
