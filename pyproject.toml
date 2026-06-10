@@ -48,6 +48,12 @@ vizdoom = [
     "vizdoom>=1.2.0",
     "opencv-python>=4.8",
 ]
+# FinalSpark Neuroplatform helpers. The core ``neuroplatform`` package is NOT
+# public — it is provided inside FinalSpark's environment, where the backend and
+# experiment scripts run. Only the public np-utils helpers install via pip.
+finalspark = [
+    "np_utils[all] @ git+https://github.com/FinalSpark-np/np-utils.git",
+]
 docs = [
     "sphinx>=7.0",
     "sphinx-rtd-theme>=2.0",
